@@ -1004,7 +1004,7 @@ private fun AnnotatedString.Builder.appendMarkdownNodeContent(
             if (enableLatexRendering) {
                 // formula as id
                 val formula = node.getTextInNode(content)
-                appendInlineContent(formula, "[Latex]")
+                appendInlineContent(formula, formula)
                 val (width, height) = with(density) {
                     assumeLatexSize(
                         latex = formula, fontSize = style.fontSize.toPx()
