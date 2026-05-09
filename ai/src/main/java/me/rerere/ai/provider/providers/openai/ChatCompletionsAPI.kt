@@ -709,9 +709,15 @@ class ChatCompletionsAPI(
             promptTokens = jsonObject["prompt_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             completionTokens = jsonObject["completion_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
             totalTokens = jsonObject["total_tokens"]?.jsonPrimitive?.intOrNull ?: 0,
-            cachedTokens = jsonObject["prompt_tokens_details"]?.jsonObjectOrNull?.get("cached_tokens")?.jsonPrimitive?.intOrNull
-                ?: 0
+            cachedTokens = jsonObject.cachedTokenCount()
         )
+    }
+
+    private fun JsonObject.cachedTokenCount(): Int {
+        return listOfNotNull(
+            this["prompt_tokens_details"]?.jsonObjectOrNull?.get("cached_tokens")?.jsonPrimitiveOrNull?.intOrNull,
+            this["prompt_cache_hit_tokens"]?.jsonPrimitiveOrNull?.intOrNull
+        ).maxOrNull() ?: 0
     }
 
     private fun List<UIMessagePart>.isOnlyTextPart(): Boolean {

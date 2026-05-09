@@ -1,11 +1,14 @@
 package me.rerere.ai.provider.providers.openai
 
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import me.rerere.ai.core.MessageRole
+import me.rerere.ai.core.TokenUsage
 import me.rerere.ai.ui.UIMessage
 import me.rerere.ai.ui.UIMessagePart
 import me.rerere.ai.util.KeyRoulette
@@ -37,6 +40,37 @@ class ChatCompletionsAPIMessageTest {
         )
         method.isAccessible = true
         return method.invoke(api, messages) as JsonArray
+    }
+
+    private fun invokeParseTokenUsage(usage: JsonObject): TokenUsage? {
+        val method = ChatCompletionsAPI::class.java.getDeclaredMethod(
+            "parseTokenUsage",
+            JsonObject::class.java
+        )
+        method.isAccessible = true
+        return method.invoke(api, usage) as TokenUsage?
+    }
+
+    @Test
+    fun `deepseek cache hit tokens should be parsed from usage`() {
+        val usage = invokeParseTokenUsage(
+            Json.parseToJsonElement(
+                """
+                {
+                  "prompt_tokens": 120,
+                  "completion_tokens": 8,
+                  "prompt_cache_hit_tokens": 96,
+                  "prompt_cache_miss_tokens": 24,
+                  "total_tokens": 128
+                }
+                """.trimIndent()
+            ).jsonObject
+        )
+
+        assertEquals(120, usage?.promptTokens)
+        assertEquals(8, usage?.completionTokens)
+        assertEquals(128, usage?.totalTokens)
+        assertEquals(96, usage?.cachedTokens)
     }
 
     @Test
