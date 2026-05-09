@@ -1,5 +1,12 @@
 pluginManagement {
     repositories {
+        maven("https://maven.aliyun.com/repository/google") {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
         google {
             content {
                 includeGroupByRegex("com\\.android.*")
@@ -7,6 +14,7 @@ pluginManagement {
                 includeGroupByRegex("androidx.*")
             }
         }
+        maven("https://maven.aliyun.com/repository/central")
         mavenCentral()
         gradlePluginPortal()
         maven("https://repo.itextsupport.com/android")
@@ -25,7 +33,21 @@ plugins {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        google()
+        maven("https://maven.aliyun.com/repository/google") {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        google {
+            content {
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
+            }
+        }
+        maven("https://maven.aliyun.com/repository/central")
         mavenCentral()
         maven("https://jitpack.io")
         mavenLocal()
