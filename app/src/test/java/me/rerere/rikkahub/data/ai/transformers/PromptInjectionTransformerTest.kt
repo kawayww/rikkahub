@@ -210,6 +210,35 @@ class PromptInjectionTransformerTest {
         assertTrue(systemText.startsWith("Original system prompt"))
         assertTrue(systemText.endsWith("Appended content"))
     }
+
+    @Test
+    fun `after system prompt injection should attach to the last leading system message`() {
+        val injectionId = Uuid.random()
+        val injection = createModeInjection(
+            id = injectionId,
+            position = InjectionPosition.AFTER_SYSTEM_PROMPT,
+            content = "Appended content"
+        )
+
+        val messages = listOf(
+            UIMessage.system("Stable system prompt"),
+            UIMessage.system("Runtime context"),
+            UIMessage.user("Hello")
+        )
+
+        val result = transformMessages(
+            messages = messages,
+            assistant = createAssistant(modeInjectionIds = setOf(injectionId)),
+            modeInjections = listOf(injection),
+            lorebooks = emptyList()
+        )
+
+        assertEquals(3, result.size)
+        assertEquals("Stable system prompt", getMessageText(result[0]))
+        assertTrue(getMessageText(result[1]).startsWith("Runtime context"))
+        assertTrue(getMessageText(result[1]).endsWith("Appended content"))
+        assertEquals("Hello", getMessageText(result[2]))
+    }
     // endregion
 
     // region BEFORE_SYSTEM_PROMPT tests

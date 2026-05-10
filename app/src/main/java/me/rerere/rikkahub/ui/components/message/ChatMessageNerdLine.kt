@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlinx.datetime.toJavaLocalDateTime
 import me.rerere.ai.ui.UIMessage
+import me.rerere.ai.core.cacheHitRate
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Clock02
 import me.rerere.hugeicons.stroke.Download04
@@ -48,6 +49,7 @@ fun ChatMessageNerdLine(
             ) {
                 val usage = message.usage
                 if (settings.showTokenUsage && usage != null) {
+                    val cacheHitRate = usage.cacheHitRate()
                     // Input tokens
                     StatsItem(
                         icon = {
@@ -61,9 +63,15 @@ fun ChatMessageNerdLine(
                         content = {
                             Text(text = "${usage.promptTokens.formatNumber()} tokens")
                             // Cached tokens
-                            if (usage.cachedTokens > 0) {
+                            if (usage.cachedTokens > 0 || cacheHitRate != null) {
                                 Text(
-                                    text = "(${message.usage?.cachedTokens?.formatNumber() ?: "0"} cached)"
+                                    text = buildString {
+                                        append("(${usage.cachedTokens.formatNumber()} cached")
+                                        cacheHitRate?.let {
+                                            append(", ${(it * 100).toFixed(1)}% hit")
+                                        }
+                                        append(")")
+                                    }
                                 )
                             }
                         }

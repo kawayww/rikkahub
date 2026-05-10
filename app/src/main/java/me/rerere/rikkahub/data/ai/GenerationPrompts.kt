@@ -3,6 +3,7 @@ package me.rerere.rikkahub.data.ai
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import me.rerere.ai.ui.UIMessage
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.AssistantMemory
 import me.rerere.rikkahub.data.repository.ConversationRepository
@@ -27,6 +28,47 @@ internal fun buildMemoryPrompt(memories: List<AssistantMemory>) =
         append(JsonInstantPretty.encodeToString(json))
         appendLine()
     }
+
+internal fun buildSystemMessages(
+    assistantPrompt: String,
+    memoryPrompt: String = "",
+    recentChatsPrompt: String = "",
+    toolPrompts: List<String> = emptyList(),
+    deepSeek: Boolean = false,
+): List<UIMessage> {
+    if (deepSeek) {
+        return buildList {
+            if (assistantPrompt.isNotBlank()) add(UIMessage.system(assistantPrompt))
+            if (memoryPrompt.isNotBlank()) add(UIMessage.system(memoryPrompt))
+            if (recentChatsPrompt.isNotBlank()) add(UIMessage.system(recentChatsPrompt))
+            toolPrompts.forEach { toolPrompt ->
+                if (toolPrompt.isNotBlank()) add(UIMessage.system(toolPrompt))
+            }
+        }
+    }
+
+    val system = buildString {
+        if (assistantPrompt.isNotBlank()) {
+            append(assistantPrompt)
+        }
+        if (memoryPrompt.isNotBlank()) {
+            appendLine()
+            append(memoryPrompt)
+        }
+        if (recentChatsPrompt.isNotBlank()) {
+            appendLine()
+            append(recentChatsPrompt)
+        }
+        toolPrompts.forEach { toolPrompt ->
+            if (toolPrompt.isNotBlank()) {
+                appendLine()
+                append(toolPrompt)
+            }
+        }
+    }
+
+    return if (system.isBlank()) emptyList() else listOf(UIMessage.system(system))
+}
 
 internal suspend fun buildRecentChatsPrompt(
     assistant: Assistant,

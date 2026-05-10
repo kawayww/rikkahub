@@ -45,6 +45,7 @@ import me.rerere.rikkahub.R
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.theme.CustomColors
 import me.rerere.rikkahub.utils.plus
+import me.rerere.rikkahub.utils.toFixed
 import org.koin.androidx.compose.koinViewModel
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -321,6 +322,14 @@ private fun StatsGrid(stats: AppStats, modifier: Modifier = Modifier) {
                 value = formatTokens(stats.totalCachedTokens),
             )
         }
+        stats.cacheHitRate?.let { cacheHitRate ->
+            StatCard(
+                modifier = Modifier.fillMaxWidth(),
+                icon = HugeIcons.Zap,
+                label = "Cache hit rate",
+                value = formatPercent(cacheHitRate),
+            )
+        }
         StatCard(
             modifier = Modifier.fillMaxWidth(),
             icon = HugeIcons.Rocket01,
@@ -373,3 +382,5 @@ private fun formatTokens(count: Long): String = when {
     count >= 1_000 -> "%.1fK".format(count / 1_000.0)
     else -> count.toString()
 }
+
+private fun formatPercent(value: Double): String = "${(value * 100).toFixed(1)}%"

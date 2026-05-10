@@ -11,6 +11,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 private const val DEEPSEEK_RUNTIME_CONTEXT_TAG = "deepseek_runtime_context"
 private val DEEPSEEK_VOLATILE_SYSTEM_LINE_PREFIXES = listOf(
     "- Time:",
+    "Today is ",
 )
 
 object DeepSeekCacheTransformer : InputMessageTransformer {
@@ -38,24 +39,42 @@ internal fun isDeepSeekProvider(provider: ProviderSetting?): Boolean {
 }
 
 internal fun stabilizeDeepSeekCachePrefix(messages: List<UIMessage>): List<UIMessage> {
-    val systemIndex = messages.indexOfFirst { it.role == MessageRole.SYSTEM }
-    if (systemIndex < 0) return messages
+    val systemBlock = messages.leadingSystemBlock() ?: return messages
 
-    val systemMessage = messages[systemIndex]
-    val systemText = systemMessage.textContent()
-    if (systemText.isBlank()) return messages
+    val runtimeLines = mutableListOf<String>()
+    val result = mutableListOf<UIMessage>()
+    var changed = false
 
-    val (stableText, runtimeLines) = splitDeepSeekRuntimeContext(systemText)
-    if (runtimeLines.isEmpty()) return messages
+    messages.forEachIndexed { index, message ->
+        if (index !in systemBlock) {
+            result.add(message)
+            return@forEachIndexed
+        }
 
-    val result = messages.toMutableList()
-    if (stableText.isBlank()) {
-        result.removeAt(systemIndex)
-    } else {
-        result[systemIndex] = systemMessage.copy(
-            parts = listOf(UIMessagePart.Text(stableText))
-        )
+        val systemText = message.textContent()
+        if (systemText.isBlank()) {
+            result.add(message)
+            return@forEachIndexed
+        }
+
+        val (stableText, volatileLines) = splitDeepSeekRuntimeContext(systemText)
+        if (volatileLines.isEmpty()) {
+            result.add(message)
+            return@forEachIndexed
+        }
+
+        changed = true
+        runtimeLines.addAll(volatileLines)
+        if (stableText.isNotBlank()) {
+            result.add(
+                message.copy(
+                    parts = listOf(UIMessagePart.Text(stableText))
+                )
+            )
+        }
     }
+
+    if (!changed) return messages
 
     val runtimeContextMessage = buildRuntimeContextMessage(runtimeLines)
     var insertIndex = result.indexOfLast { it.role == MessageRole.USER }
@@ -67,10 +86,16 @@ internal fun stabilizeDeepSeekCachePrefix(messages: List<UIMessage>): List<UIMes
 }
 
 private fun splitDeepSeekRuntimeContext(text: String): Pair<String, List<String>> {
-    val stableLines = mutableListOf<String>()
     val runtimeLines = mutableListOf<String>()
+    val remainingLines = text.lineSequence().toMutableList()
 
-    text.lineSequence().forEach { line ->
+    extractMarkdownSection(remainingLines, "## Info")?.let { section ->
+        runtimeLines.addAll(section.lines)
+        remainingLines.subList(section.start, section.endExclusive).clear()
+    }
+
+    val stableLines = mutableListOf<String>()
+    remainingLines.forEach { line ->
         if (isVolatileDeepSeekSystemLine(line)) {
             runtimeLines.add(line)
         } else {
@@ -78,7 +103,11 @@ private fun splitDeepSeekRuntimeContext(text: String): Pair<String, List<String>
         }
     }
 
-    return stableLines.joinToString("\n") to runtimeLines
+    if (runtimeLines.isEmpty()) {
+        return text to emptyList()
+    }
+
+    return normalizePromptLines(stableLines) to runtimeLines
 }
 
 private fun isVolatileDeepSeekSystemLine(line: String): Boolean {
@@ -102,3 +131,70 @@ private fun buildRuntimeContextMessage(lines: List<String>): UIMessage {
 private fun UIMessage.textContent(): String {
     return parts.filterIsInstance<UIMessagePart.Text>().joinToString("") { it.text }
 }
+
+private fun extractMarkdownSection(
+    lines: List<String>,
+    heading: String
+): MarkdownSection? {
+    val start = lines.indexOfFirst { it.trim() == heading }
+    if (start < 0) return null
+
+    var end = start + 1
+    while (end < lines.size && !isMarkdownHeading(lines[end])) {
+        end++
+    }
+
+    return MarkdownSection(
+        start = start,
+        endExclusive = end,
+        lines = lines.subList(start, end),
+    )
+}
+
+private fun isMarkdownHeading(line: String): Boolean {
+    return line.trimStart().startsWith("#")
+}
+
+private fun normalizePromptLines(lines: List<String>): String {
+    val normalized = mutableListOf<String>()
+    var previousBlank = false
+
+    lines.forEach { line ->
+        val blank = line.isBlank()
+        if (blank) {
+            if (!previousBlank) {
+                normalized.add("")
+            }
+        } else {
+            normalized.add(line)
+        }
+        previousBlank = blank
+    }
+
+    while (normalized.isNotEmpty() && normalized.first().isBlank()) {
+        normalized.removeAt(0)
+    }
+    while (normalized.isNotEmpty() && normalized.last().isBlank()) {
+        normalized.removeAt(normalized.lastIndex)
+    }
+
+    return normalized.joinToString("\n")
+}
+
+private fun List<UIMessage>.leadingSystemBlock(): IntRange? {
+    val start = indexOfFirst { it.role == MessageRole.SYSTEM }
+    if (start < 0) return null
+
+    var end = start
+    while (end + 1 <= lastIndex && this[end + 1].role == MessageRole.SYSTEM) {
+        end++
+    }
+
+    return start..end
+}
+
+private data class MarkdownSection(
+    val start: Int,
+    val endExclusive: Int,
+    val lines: List<String>,
+)

@@ -105,37 +105,82 @@ internal fun applyInjections(
 ): List<UIMessage> {
     val result = messages.toMutableList()
 
-    // 找到系统消息的索引（通常是第一条）
-    val systemIndex = result.indexOfFirst { it.role == MessageRole.SYSTEM }
+    // 找到前导系统消息块（通常是最开始的 1-N 条 system）
+    val systemBlock = result.leadingSystemBlock()
 
     // 处理 BEFORE_SYSTEM_PROMPT 和 AFTER_SYSTEM_PROMPT
-    if (systemIndex >= 0) {
+    if (systemBlock != null) {
         val beforeContent = byPosition[InjectionPosition.BEFORE_SYSTEM_PROMPT]
             ?.joinToString("\n") { it.content } ?: ""
         val afterContent = byPosition[InjectionPosition.AFTER_SYSTEM_PROMPT]
             ?.joinToString("\n") { it.content } ?: ""
 
         if (beforeContent.isNotEmpty() || afterContent.isNotEmpty()) {
-            val systemMessage = result[systemIndex]
-            val originalText = systemMessage.parts
-                .filterIsInstance<UIMessagePart.Text>()
-                .joinToString("") { it.text }
+            val firstSystemIndex = systemBlock.first
+            val lastSystemIndex = systemBlock.last
 
-            val newText = buildString {
-                if (beforeContent.isNotEmpty()) {
-                    append(beforeContent)
-                    appendLine()
+            if (firstSystemIndex == lastSystemIndex) {
+                val systemMessage = result[firstSystemIndex]
+                val originalText = systemMessage.parts
+                    .filterIsInstance<UIMessagePart.Text>()
+                    .joinToString("") { it.text }
+
+                val newText = buildString {
+                    if (beforeContent.isNotEmpty()) {
+                        append(beforeContent)
+                        if (originalText.isNotEmpty()) {
+                            appendLine()
+                        }
+                    }
+                    append(originalText)
+                    if (afterContent.isNotEmpty()) {
+                        appendLine()
+                        append(afterContent)
+                    }
                 }
-                append(originalText)
+
+                result[firstSystemIndex] = systemMessage.copy(
+                    parts = listOf(UIMessagePart.Text(newText))
+                )
+            } else {
+                if (beforeContent.isNotEmpty()) {
+                    val systemMessage = result[firstSystemIndex]
+                    val originalText = systemMessage.parts
+                        .filterIsInstance<UIMessagePart.Text>()
+                        .joinToString("") { it.text }
+
+                    val newText = buildString {
+                        append(beforeContent)
+                        if (originalText.isNotEmpty()) {
+                            appendLine()
+                            append(originalText)
+                        }
+                    }
+
+                    result[firstSystemIndex] = systemMessage.copy(
+                        parts = listOf(UIMessagePart.Text(newText))
+                    )
+                }
+
                 if (afterContent.isNotEmpty()) {
-                    appendLine()
-                    append(afterContent)
+                    val systemMessage = result[lastSystemIndex]
+                    val originalText = systemMessage.parts
+                        .filterIsInstance<UIMessagePart.Text>()
+                        .joinToString("") { it.text }
+
+                    val newText = buildString {
+                        append(originalText)
+                        if (afterContent.isNotEmpty()) {
+                            appendLine()
+                            append(afterContent)
+                        }
+                    }
+
+                    result[lastSystemIndex] = systemMessage.copy(
+                        parts = listOf(UIMessagePart.Text(newText))
+                    )
                 }
             }
-
-            result[systemIndex] = systemMessage.copy(
-                parts = listOf(UIMessagePart.Text(newText))
-            )
         }
     } else {
         // 没有系统消息时，创建一个新的系统消息
@@ -247,4 +292,16 @@ internal fun findSafeInsertIndex(messages: List<UIMessage>, targetIndex: Int): I
     }
 
     return index
+}
+
+private fun List<UIMessage>.leadingSystemBlock(): IntRange? {
+    val start = indexOfFirst { it.role == MessageRole.SYSTEM }
+    if (start < 0) return null
+
+    var end = start
+    while (end + 1 <= lastIndex && this[end + 1].role == MessageRole.SYSTEM) {
+        end++
+    }
+
+    return start..end
 }

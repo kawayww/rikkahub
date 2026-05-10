@@ -10,6 +10,11 @@ data class TokenUsage(
     val totalTokens: Int = 0,
 )
 
+fun TokenUsage.cacheHitRate(): Double? {
+    if (promptTokens <= 0) return null
+    return cachedTokens.toDouble() / promptTokens.toDouble()
+}
+
 fun TokenUsage?.merge(other: TokenUsage): TokenUsage {
     val promptTokens = if (other.promptTokens > 0) {
         other.promptTokens

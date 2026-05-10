@@ -33,6 +33,7 @@ import me.rerere.ai.ui.limitContext
 import me.rerere.rikkahub.data.ai.transformers.InputMessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.MessageTransformer
 import me.rerere.rikkahub.data.ai.transformers.OutputMessageTransformer
+import me.rerere.rikkahub.data.ai.transformers.isDeepSeekProvider
 import me.rerere.rikkahub.data.ai.transformers.onGenerationFinish
 import me.rerere.rikkahub.data.ai.transformers.transforms
 import me.rerere.rikkahub.data.ai.transformers.visualTransforms
@@ -88,7 +89,7 @@ class GenerationHandler(
 
             val toolsInternal = buildList {
                 Log.i(TAG, "generateInternal: build tools($assistant)")
-                if (assistant?.enableMemory == true) {
+                if (assistant.enableMemory) {
                     val memoryAssistantId = if (assistant.useGlobalMemory) {
                         MemoryRepository.GLOBAL_MEMORY_ID
                     } else {
@@ -343,37 +344,32 @@ class GenerationHandler(
         processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
         conversationSystemPrompt: String? = null,
     ) {
-        val internalMessages = buildList {
-            val system = buildString {
-                val effectiveSystemPrompt =
-                    if (assistant.allowConversationSystemPrompt && !conversationSystemPrompt.isNullOrBlank()) {
-                        conversationSystemPrompt
-                    } else {
-                        assistant.systemPrompt
-                    }
-                if (effectiveSystemPrompt.isNotBlank()) {
-                    append(effectiveSystemPrompt)
-                }
-
-                // 记忆
-                if (assistant.enableMemory) {
-                    appendLine()
-                    append(buildMemoryPrompt(memories = memories))
-                }
-                if (assistant.enableRecentChatsReference) {
-                    appendLine()
-                    append(buildRecentChatsPrompt(assistant, conversationRepo))
-                }
-
-                // 工具prompt
-                tools.forEach { tool ->
-                    appendLine()
-                    append(tool.systemPrompt(model, messages))
-                }
-            }
-            if (system.isNotBlank()) add(UIMessage.system(prompt = system))
-            addAll(messages.limitContext(assistant.contextMessageSize))
-        }.transforms(
+        val effectiveSystemPrompt = if (
+            assistant.allowConversationSystemPrompt &&
+            !conversationSystemPrompt.isNullOrBlank()
+        ) {
+            conversationSystemPrompt
+        } else {
+            assistant.systemPrompt
+        }
+        val systemMessages = buildSystemMessages(
+            assistantPrompt = effectiveSystemPrompt,
+            memoryPrompt = if (assistant.enableMemory) {
+                buildMemoryPrompt(memories = memories)
+            } else {
+                ""
+            },
+            recentChatsPrompt = if (assistant.enableRecentChatsReference) {
+                buildRecentChatsPrompt(assistant, conversationRepo)
+            } else {
+                ""
+            },
+            toolPrompts = tools.map { tool ->
+                tool.systemPrompt(model, messages)
+            },
+            deepSeek = isDeepSeekProvider(provider),
+        )
+        val internalMessages = (systemMessages + messages.limitContext(assistant.contextMessageSize)).transforms(
             transformers = transformers,
             context = context,
             model = model,
