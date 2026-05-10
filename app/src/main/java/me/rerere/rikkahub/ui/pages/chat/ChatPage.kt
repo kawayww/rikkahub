@@ -29,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -53,7 +54,7 @@ import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
-import me.rerere.rikkahub.data.datastore.getAssistantById
+import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
@@ -61,6 +62,7 @@ import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.ui.components.ai.ChatInput
+import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.context.Navigator
@@ -249,7 +251,21 @@ private fun ChatPageContent(
     val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
     var previewMode by rememberSaveable { mutableStateOf(false) }
+    var dismissedSummaryBackfillConversationId by remember { mutableStateOf<Uuid?>(null) }
     val hazeState = rememberHazeState()
+    val summaryBackfillPromptSpec = buildChatOverviewSummaryBackfillPromptSpec(
+        conversation = conversation,
+        settings = setting,
+        previewMode = previewMode,
+        dismissedConversationId = dismissedSummaryBackfillConversationId,
+    )
+    val summaryModelMissingMessage = stringResource(R.string.chat_overview_summary_backfill_model_missing)
+
+    LaunchedEffect(previewMode) {
+        if (!previewMode) {
+            dismissedSummaryBackfillConversationId = null
+        }
+    }
 
     TTSAutoPlay(vm = vm, setting = setting, conversation = conversation)
 
@@ -430,6 +446,31 @@ private fun ChatPageContent(
                 },
             )
         }
+    }
+
+    RikkaConfirmDialog(
+        show = summaryBackfillPromptSpec.shouldPrompt,
+        title = stringResource(R.string.chat_overview_summary_backfill_title),
+        confirmText = stringResource(R.string.chat_overview_summary_backfill_confirm),
+        dismissText = stringResource(R.string.chat_overview_summary_backfill_dismiss),
+        onConfirm = {
+            dismissedSummaryBackfillConversationId = conversation.id
+            if (setting.findModelById(setting.conversationSummaryModelId) == null) {
+                toaster.show(summaryModelMissingMessage, type = ToastType.Warning)
+            } else {
+                vm.generateMissingMessageSummaries()
+            }
+        },
+        onDismiss = {
+            dismissedSummaryBackfillConversationId = conversation.id
+        },
+    ) {
+        Text(
+            text = stringResource(
+                R.string.chat_overview_summary_backfill_message,
+                summaryBackfillPromptSpec.missingCount,
+            )
+        )
     }
 }
 

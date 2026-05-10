@@ -102,6 +102,10 @@ fun SettingModelPage(vm: SettingVM = koinViewModel()) {
             }
 
             item {
+                DefaultConversationSummaryModelSetting(settings = settings, vm = vm)
+            }
+
+            item {
                 DefaultSuggestionModelSetting(settings = settings, vm = vm)
             }
 
@@ -227,6 +231,45 @@ private fun DefaultTranslationModelSetting(
             }
         }
     }
+}
+
+@Composable
+private fun DefaultConversationSummaryModelSetting(
+    settings: Settings,
+    vm: SettingVM
+) {
+    ModelFeatureCard(
+        title = {
+            Text(
+                text = stringResource(R.string.setting_model_page_conversation_summary_model),
+                maxLines = 1
+            )
+        },
+        description = {
+            Text(stringResource(R.string.setting_model_page_conversation_summary_model_desc))
+        },
+        icon = {
+            Icon(HugeIcons.MessageMultiple01, null)
+        },
+        actions = {
+            Box(modifier = Modifier.weight(1f)) {
+                ModelSelector(
+                    modelId = settings.conversationSummaryModelId,
+                    type = ModelType.CHAT,
+                    onSelect = {
+                        vm.updateSettings(
+                            settings.copy(
+                                conversationSummaryModelId = it.id
+                            )
+                        )
+                    },
+                    providers = settings.providers,
+                    allowClear = true,
+                    modifier = Modifier.wrapContentWidth()
+                )
+            }
+        }
+    )
 }
 
 @Composable

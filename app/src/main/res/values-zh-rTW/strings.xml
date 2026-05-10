@@ -1027,5 +1027,15 @@
   <string name="chat_page_conversation_system_prompt_hint">覆蓋此對話的助理系統提示</string>
   <string name="chat_page_conversation_system_prompt_clear">清除</string>
   <string name="chat_page_conversation_system_prompt_save">儲存</string>
+  <string name="setting_display_page_chat_overview_mode_ai_summary">AI 摘要</string>
+  <string name="setting_display_page_chat_overview_mode_desc">選擇總覽面板顯示快取的 AI 摘要，或截斷後的原文</string>
+  <string name="setting_display_page_chat_overview_mode_title">總覽顯示模式</string>
+  <string name="setting_display_page_chat_overview_mode_truncated">截斷原文</string>
+  <string name="setting_model_page_conversation_summary_model">聊天對話摘要模型</string>
+  <string name="setting_model_page_conversation_summary_model_desc">用於為總覽畫面產生並快取每則訊息摘要的模型</string>
+  <string name="chat_overview_summary_backfill_title">缺少訊息摘要</string>
+  <string name="chat_overview_summary_backfill_message">目前對話有 %1$d 則訊息尚未產生摘要，是否現在產生？</string>
+  <string name="chat_overview_summary_backfill_confirm">產生摘要</string>
+  <string name="chat_overview_summary_backfill_dismiss">暫不產生</string>
+  <string name="chat_overview_summary_backfill_model_missing">請先設定聊天對話摘要模型</string>
 </resources>
-

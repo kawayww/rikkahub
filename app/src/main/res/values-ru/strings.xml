@@ -1028,5 +1028,15 @@
   <string name="chat_page_conversation_system_prompt_hint">Переопределить системный промпт ассистента для этого разговора</string>
   <string name="chat_page_conversation_system_prompt_clear">Очистить</string>
   <string name="chat_page_conversation_system_prompt_save">Сохранить</string>
+  <string name="setting_display_page_chat_overview_mode_ai_summary">Сводка ИИ</string>
+  <string name="setting_display_page_chat_overview_mode_desc">Выберите, что показывать в панели обзора: кэшированные сводки ИИ или исходный усечённый текст</string>
+  <string name="setting_display_page_chat_overview_mode_title">Режим обзора</string>
+  <string name="setting_display_page_chat_overview_mode_truncated">Усечённый текст</string>
+  <string name="setting_model_page_conversation_summary_model">Модель сводок обзора чата</string>
+  <string name="setting_model_page_conversation_summary_model_desc">Модель для создания и кэширования сводок отдельных сообщений в панели обзора</string>
+  <string name="chat_overview_summary_backfill_title">Нет сводок сообщений</string>
+  <string name="chat_overview_summary_backfill_message">В этом диалоге %1$d сообщений без сводок. Создать их сейчас?</string>
+  <string name="chat_overview_summary_backfill_confirm">Создать сводки</string>
+  <string name="chat_overview_summary_backfill_dismiss">Не сейчас</string>
+  <string name="chat_overview_summary_backfill_model_missing">Сначала настройте модель сводок обзора чата</string>
 </resources>
-

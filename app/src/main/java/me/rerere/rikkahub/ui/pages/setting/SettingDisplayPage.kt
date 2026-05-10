@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.ChatFontFamily
 import me.rerere.rikkahub.data.datastore.DisplaySetting
+import me.rerere.rikkahub.data.datastore.ChatOverviewDisplayMode
 import me.rerere.rikkahub.ui.components.nav.BackButton
 import me.rerere.rikkahub.ui.components.richtext.MarkdownBlock
 import me.rerere.rikkahub.ui.components.ui.CardGroup
@@ -235,6 +236,44 @@ fun SettingDisplayPage(vm: SettingVM = koinViewModel()) {
                         modifier = Modifier.padding(horizontal = 8.dp),
                         title = { Text(stringResource(R.string.setting_page_message_display_settings)) },
                     ) {
+                        item(
+                            headlineContent = {
+                                Text(stringResource(R.string.setting_display_page_chat_overview_mode_title))
+                            },
+                            supportingContent = {
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(stringResource(R.string.setting_display_page_chat_overview_mode_desc))
+                                    val overviewModeOptions = listOf(
+                                        ChatOverviewDisplayMode.AI_SUMMARY to stringResource(
+                                            R.string.setting_display_page_chat_overview_mode_ai_summary
+                                        ),
+                                        ChatOverviewDisplayMode.TRUNCATED to stringResource(
+                                            R.string.setting_display_page_chat_overview_mode_truncated
+                                        ),
+                                    )
+                                    SingleChoiceSegmentedButtonRow(
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        overviewModeOptions.forEachIndexed { index, (mode, label) ->
+                                            SegmentedButton(
+                                                selected = displaySetting.chatOverviewDisplayMode == mode,
+                                                onClick = {
+                                                    updateDisplaySetting(
+                                                        displaySetting.copy(chatOverviewDisplayMode = mode)
+                                                    )
+                                                },
+                                                shape = SegmentedButtonDefaults.itemShape(
+                                                    index = index,
+                                                    count = overviewModeOptions.size
+                                                ),
+                                            ) {
+                                                Text(label)
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                        )
                         item(
                             headlineContent = { Text(stringResource(R.string.setting_display_page_show_user_avatar_title)) },
                             supportingContent = { Text(stringResource(R.string.setting_display_page_show_user_avatar_desc)) },

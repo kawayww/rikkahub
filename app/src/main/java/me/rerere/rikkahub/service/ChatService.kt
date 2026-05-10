@@ -54,6 +54,10 @@ import me.rerere.rikkahub.RouteActivity
 import me.rerere.rikkahub.data.ai.GenerationChunk
 import me.rerere.rikkahub.data.ai.GenerationHandler
 import me.rerere.rikkahub.data.ai.mcp.McpManager
+import me.rerere.rikkahub.data.ai.summary.buildMessageSummaryPrompt
+import me.rerere.rikkahub.data.ai.summary.cleanGeneratedMessageSummary
+import me.rerere.rikkahub.data.ai.summary.pendingSummaryCandidates
+import me.rerere.rikkahub.data.ai.summary.summarySourceText
 import me.rerere.rikkahub.data.ai.tools.LocalTools
 import me.rerere.rikkahub.data.ai.tools.createSearchTools
 import me.rerere.rikkahub.data.ai.tools.createSkillTools
@@ -142,6 +146,8 @@ class ChatService(
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
     private val _sessionsVersion = MutableStateFlow(0L)
+    private val summaryJobs = ConcurrentHashMap<Uuid, Job>()
+    private val summaryRerunRequests = ConcurrentHashMap<Uuid, Unit>()
 
     // 错误状态
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
@@ -192,6 +198,9 @@ class ChatService(
         ProcessLifecycleOwner.get().lifecycle.removeObserver(lifecycleObserver)
         sessions.values.forEach { it.cleanup() }
         sessions.clear()
+        summaryJobs.values.forEach { it.cancel() }
+        summaryJobs.clear()
+        summaryRerunRequests.clear()
     }
 
     // ---- Session 管理 ----
@@ -329,6 +338,8 @@ class ChatService(
                 // 开始补全
                 if (answer) {
                     handleMessageComplete(conversationId)
+                } else {
+                    scheduleConversationSummaryGeneration(conversationId)
                 }
 
                 _generationDoneFlow.emit(conversationId)
@@ -598,11 +609,114 @@ class ChatService(
             val finalConversation = getConversationFlow(conversationId).value
             saveConversation(conversationId, finalConversation)
 
+            scheduleConversationSummaryGeneration(conversationId)
+
             launchWithConversationReference(conversationId) {
                 generateTitle(conversationId, finalConversation)
             }
             launchWithConversationReference(conversationId) {
                 generateSuggestion(conversationId, finalConversation)
+            }
+        }
+    }
+
+    private fun scheduleConversationSummaryGeneration(conversationId: Uuid) {
+        val runningJob = summaryJobs[conversationId]
+        if (runningJob?.isActive == true) {
+            summaryRerunRequests[conversationId] = Unit
+            return
+        }
+
+        val job = launchWithConversationReference(conversationId) {
+            try {
+                generateConversationSummaries(conversationId)
+            } finally {
+                summaryJobs.remove(conversationId)
+                if (summaryRerunRequests.remove(conversationId) != null) {
+                    scheduleConversationSummaryGeneration(conversationId)
+                }
+            }
+        }
+        summaryJobs[conversationId] = job
+    }
+
+    fun requestConversationSummaryGeneration(conversationId: Uuid) {
+        scheduleConversationSummaryGeneration(conversationId)
+    }
+
+    private suspend fun generateConversationSummaries(conversationId: Uuid) {
+        runCatching {
+            val settings = settingsStore.settingsFlow.first()
+            val model = settings.findModelById(settings.conversationSummaryModelId) ?: return
+            val provider = model.findProvider(settings.providers) ?: return
+            val providerHandler = providerManager.getProviderByType(provider)
+            val locale = Locale.getDefault()
+
+            while (true) {
+                val conversation = conversationRepo.getConversationById(conversationId)
+                    ?: getConversationFlow(conversationId).value
+                val candidate = conversation.pendingSummaryCandidates().firstOrNull() ?: break
+                val currentCandidate = conversation.getMessageNodeByMessageId(candidate.id)
+                    ?.messages
+                    ?.firstOrNull { it.id == candidate.id }
+
+                if (currentCandidate?.summary?.isNotBlank() == true) {
+                    continue
+                }
+
+                val result = providerHandler.generateText(
+                    providerSetting = provider,
+                    messages = listOf(
+                        UIMessage.user(
+                            buildMessageSummaryPrompt(
+                                message = candidate,
+                                locale = locale,
+                            )
+                        )
+                    ),
+                    params = TextGenerationParams(
+                        model = model,
+                        reasoningLevel = ReasoningLevel.OFF,
+                        temperature = 0.2f,
+                        maxTokens = 64,
+                    ),
+                )
+
+                val generatedSummary = cleanGeneratedMessageSummary(
+                    result.choices.firstOrNull()?.message?.toText().orEmpty()
+                )
+                val summary = generatedSummary.ifBlank {
+                    cleanGeneratedMessageSummary(candidate.summarySourceText()).take(240)
+                }
+                if (summary.isBlank()) {
+                    Log.w(TAG, "generateConversationSummaries: blank summary for ${candidate.id}")
+                    break
+                }
+
+                val latestConversation = conversationRepo.getConversationById(conversationId)
+                    ?: getConversationFlow(conversationId).value
+                val updatedConversation = latestConversation.copy(
+                    messageNodes = latestConversation.messageNodes.map { node ->
+                        if (node.messages.none { it.id == candidate.id }) {
+                            node
+                        } else {
+                            node.copy(
+                                messages = node.messages.map { message ->
+                                    if (message.id == candidate.id) {
+                                        message.copy(summary = summary)
+                                    } else {
+                                        message
+                                    }
+                                }
+                            )
+                        }
+                    }
+                )
+                saveConversation(conversationId, updatedConversation)
+            }
+        }.onFailure {
+            if (it !is CancellationException) {
+                Log.w(TAG, "generateConversationSummaries failed", it)
             }
         }
     }
@@ -1113,6 +1227,7 @@ class ChatService(
         if (!edited) return
 
         saveConversation(conversationId, currentConversation.copy(messageNodes = updatedNodes))
+        scheduleConversationSummaryGeneration(conversationId)
     }
 
     suspend fun forkConversationAtMessage(

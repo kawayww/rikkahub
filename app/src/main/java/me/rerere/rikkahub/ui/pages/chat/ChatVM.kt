@@ -306,6 +306,10 @@ class ChatVM(
         }
     }
 
+    fun generateMissingMessageSummaries() {
+        chatService.requestConversationSummaryGeneration(_conversationId)
+    }
+
     fun clearTranslationField(messageId: Uuid) {
         chatService.clearTranslationField(_conversationId, messageId)
     }

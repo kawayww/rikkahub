@@ -83,6 +83,7 @@ class SettingsStore(
         val FAVORITE_MODELS = stringPreferencesKey("favorite_models")
         val SELECT_MODEL = stringPreferencesKey("chat_model")
         val TITLE_MODEL = stringPreferencesKey("title_model")
+        val CONVERSATION_SUMMARY_MODEL = stringPreferencesKey("conversation_summary_model")
         val TRANSLATE_MODEL = stringPreferencesKey("translate_model")
         val SUGGESTION_MODEL = stringPreferencesKey("suggestion_model")
         val IMAGE_GENERATION_MODEL = stringPreferencesKey("image_generation_model")
@@ -165,6 +166,8 @@ class SettingsStore(
                 chatModelId = preferences[SELECT_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
                 titleModelId = preferences[TITLE_MODEL]?.let { Uuid.parse(it) }
+                    ?: DEFAULT_AUTO_MODEL_ID,
+                conversationSummaryModelId = preferences[CONVERSATION_SUMMARY_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
                 translateModeId = preferences[TRANSLATE_MODEL]?.let { Uuid.parse(it) }
                     ?: DEFAULT_AUTO_MODEL_ID,
@@ -351,6 +354,7 @@ class SettingsStore(
             preferences[FAVORITE_MODELS] = JsonInstant.encodeToString(settings.favoriteModels)
             preferences[SELECT_MODEL] = settings.chatModelId.toString()
             preferences[TITLE_MODEL] = settings.titleModelId.toString()
+            preferences[CONVERSATION_SUMMARY_MODEL] = settings.conversationSummaryModelId.toString()
             preferences[TRANSLATE_MODEL] = settings.translateModeId.toString()
             preferences[SUGGESTION_MODEL] = settings.suggestionModelId.toString()
             preferences[IMAGE_GENERATION_MODEL] = settings.imageGenerationModelId.toString()
@@ -486,6 +490,7 @@ data class Settings(
     val favoriteModels: List<Uuid> = emptyList(),
     val chatModelId: Uuid = Uuid.random(),
     val titleModelId: Uuid = Uuid.random(),
+    val conversationSummaryModelId: Uuid = Uuid.random(),
     val imageGenerationModelId: Uuid = Uuid.random(),
     val titlePrompt: String = DEFAULT_TITLE_PROMPT,
     val translateModeId: Uuid = Uuid.random(),
@@ -540,12 +545,23 @@ enum class ChatFontFamily {
 }
 
 @Serializable
+enum class ChatOverviewDisplayMode {
+    @SerialName("ai_summary")
+    AI_SUMMARY,
+
+    @SerialName("truncated")
+    TRUNCATED,
+}
+
+@Serializable
 data class DisplaySetting(
     val userAvatar: Avatar = Avatar.Dummy,
     val userNickname: String = "",
     val useAppIconStyleLoadingIndicator: Boolean = true,
     val showUserAvatar: Boolean = true,
     val showAssistantBubble: Boolean = false,
+    val chatOverviewDisplayMode: ChatOverviewDisplayMode = ChatOverviewDisplayMode.AI_SUMMARY,
+    val overviewSummaryLines: Int = 1,
     val showModelIcon: Boolean = true,
     val showModelName: Boolean = true,
     val showDateBelowName: Boolean = false,

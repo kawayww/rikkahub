@@ -1,13 +1,19 @@
 package me.rerere.ai.ui
 
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.Json
 import me.rerere.ai.core.MessageRole
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MessageTest {
+    private val messageJson = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
     // ==================== limitContext Tests ====================
 
@@ -119,6 +125,39 @@ class MessageTest {
         val result = messages.limitContext(1)
         assertEquals(1, result.size)
         assertEquals(messages, result)
+    }
+
+    // ==================== summary Tests ====================
+
+    @Test
+    fun `summary should survive serialization`() {
+        val original = UIMessage(
+            role = MessageRole.ASSISTANT,
+            parts = listOf(UIMessagePart.Text("hello")),
+            summary = "short summary",
+        )
+
+        val encoded = messageJson.encodeToString(original)
+        val decoded = messageJson.decodeFromString<UIMessage>(encoded)
+
+        assertEquals("short summary", decoded.summary)
+    }
+
+    @Test
+    fun `old ui message payloads still decode without summary`() {
+        val legacyJson = """
+            {
+              "id":"11111111-1111-1111-1111-111111111111",
+              "role":"user",
+              "parts":[{"type":"text","text":"hello"}],
+              "annotations":[],
+              "createdAt":"2026-05-10T12:00:00"
+            }
+        """.trimIndent()
+
+        val decoded = messageJson.decodeFromString<UIMessage>(legacyJson)
+
+        assertNull(decoded.summary)
     }
 
     // ==================== isValidToUpload Tests ====================

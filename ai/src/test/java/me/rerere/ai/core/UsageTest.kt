@@ -19,7 +19,7 @@ class UsageTest {
             cachedTokens = 50,
         )
 
-        assertEquals(0.25, usage.cacheHitRate(), 0.0001)
+        assertEquals(0.25, usage.cacheHitRate()!!, 0.0001)
     }
 
     @Test
@@ -29,6 +29,6 @@ class UsageTest {
             cachedTokens = 128,
         )
 
-        assertEquals(1.0, usage.cacheHitRate(), 0.0001)
+        assertEquals(1.0, usage.cacheHitRate()!!, 0.0001)
     }
 }

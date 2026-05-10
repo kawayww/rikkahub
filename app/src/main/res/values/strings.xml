@@ -572,6 +572,10 @@
   <string name="setting_display_page_chat_font_family_monospace">Monospace</string>
   <string name="setting_display_page_chat_font_family_serif">Serif</string>
   <string name="setting_display_page_chat_font_family_title">Chat Font</string>
+  <string name="setting_display_page_chat_overview_mode_ai_summary">AI Summary</string>
+  <string name="setting_display_page_chat_overview_mode_desc">Choose whether the overview panel shows cached AI summaries or the original truncated text</string>
+  <string name="setting_display_page_chat_overview_mode_title">Overview Display Mode</string>
+  <string name="setting_display_page_chat_overview_mode_truncated">Truncated</string>
   <string name="setting_display_page_chat_list_model_icon_desc">Whether to display model icons in chat list messages</string>
   <string name="setting_display_page_chat_list_model_icon_title">Chat List Model Icon</string>
   <string name="setting_display_page_code_block_auto_collapse_desc">Automatically collapse code blocks by default</string>
@@ -674,6 +678,8 @@
   <string name="setting_mcp_page_url_label">URL</string>
   <string name="setting_model_page_chat_model">Chat Model</string>
   <string name="setting_model_page_chat_model_desc">Global default chat model</string>
+  <string name="setting_model_page_conversation_summary_model">Chat Overview Summary Model</string>
+  <string name="setting_model_page_conversation_summary_model_desc">Model used to generate cached per-message summaries for the overview panel</string>
   <string name="setting_model_page_compress_model">Compress Model</string>
   <string name="setting_model_page_compress_model_desc">Model for compressing conversation history</string>
   <string name="setting_model_page_compress_prompt_vars">Variables: {content}, {target_tokens}, {additional_context}</string>
@@ -1029,5 +1035,9 @@
   <string name="setting_asr_configure_volcengine_websocket_desc">Volcengine streaming ASR endpoint</string>
   <string name="setting_asr_configure_resource_id">Resource ID</string>
   <string name="setting_asr_configure_resource_id_desc">X-Api-Resource-Id for billing</string>
+  <string name="chat_overview_summary_backfill_title">Missing message summaries</string>
+  <string name="chat_overview_summary_backfill_message">This conversation has %1$d messages without summaries. Generate them now?</string>
+  <string name="chat_overview_summary_backfill_confirm">Generate summaries</string>
+  <string name="chat_overview_summary_backfill_dismiss">Not now</string>
+  <string name="chat_overview_summary_backfill_model_missing">Please configure the chat overview summary model first</string>
 </resources>
-

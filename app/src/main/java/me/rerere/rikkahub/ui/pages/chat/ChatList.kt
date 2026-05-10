@@ -25,6 +25,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,6 +37,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListState
@@ -594,12 +596,21 @@ private fun ChatListPreview(
     var searchQuery by remember { mutableStateOf("") }
 
     // 过滤消息，同时保留原始 index 避免后续 O(n) indexOf 查找
-    val filteredMessages = remember(conversation.messageNodes, searchQuery) {
+    val filteredMessages = remember(
+        conversation.messageNodes,
+        searchQuery,
+        settings.displaySetting.chatOverviewDisplayMode,
+        settings.displaySetting.overviewSummaryLines,
+    ) {
         if (searchQuery.isBlank()) {
             conversation.messageNodes.mapIndexed { index, node -> index to node }
         } else {
             conversation.messageNodes.mapIndexed { index, node -> index to node }
-                .filter { (_, node) -> node.currentMessage.toText().contains(searchQuery, ignoreCase = true) }
+                .filter { (_, node) ->
+                    buildChatOverviewPreviewSpec(node.currentMessage, settings)
+                        .searchText
+                        .contains(searchQuery, ignoreCase = true)
+                }
         }
     }
 
@@ -653,16 +664,21 @@ private fun ChatListPreview(
                 key = { index, item -> item.second.id },
             ) { _, (originalIndex, node) ->
                 val message = node.currentMessage
-                val isUser = message.role == me.rerere.ai.core.MessageRole.USER
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (!isUser) Modifier.padding(end = 24.dp) else Modifier
-                        ),
-                    horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
+                val overviewSpec = remember(
+                    message,
+                    settings.displaySetting.chatOverviewDisplayMode,
+                    settings.displaySetting.overviewSummaryLines,
                 ) {
+                    buildChatOverviewPreviewSpec(message, settings)
+                }
+                val isUser = message.role == me.rerere.ai.core.MessageRole.USER
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart,
+                ) {
+                    val maxBubbleWidth = maxWidth * overviewSpec.maxWidthFraction
                     Surface(
+                        modifier = Modifier.widthIn(max = maxBubbleWidth),
                         shape = MaterialTheme.shapes.medium,
                         color = if (isUser) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
                     ) {
@@ -676,10 +692,18 @@ private fun ChatListPreview(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val highlightColor = MaterialTheme.colorScheme.tertiaryContainer
-                            val highlightedText = remember(searchQuery, message) {
-                                val fullText = message.toText().trim().ifBlank { "[...]" }
+                            val displaySource = remember(searchQuery, overviewSpec) {
+                                if (searchQuery.isBlank()) {
+                                    overviewSpec.text
+                                } else if (overviewSpec.text.contains(searchQuery, ignoreCase = true)) {
+                                    overviewSpec.text
+                                } else {
+                                    overviewSpec.searchText
+                                }
+                            }
+                            val highlightedText = remember(searchQuery, displaySource) {
                                 val messageText = extractMatchingSnippet(
-                                    text = fullText,
+                                    text = displaySource,
                                     query = searchQuery
                                 )
                                 buildHighlightedText(
@@ -691,7 +715,7 @@ private fun ChatListPreview(
                             Text(
                                 text = highlightedText,
                                 style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
+                                maxLines = overviewSpec.maxLines,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
