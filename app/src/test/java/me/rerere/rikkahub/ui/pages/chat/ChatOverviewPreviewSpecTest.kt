@@ -172,6 +172,36 @@ class ChatOverviewPreviewSpecTest {
     }
 
     @Test
+    fun `overview summary backfill prompt is skipped while summaries are queued`() {
+        val conversation = Conversation(
+            id = Uuid.random(),
+            assistantId = Uuid.random(),
+            messageNodes = listOf(
+                MessageNode.of(UIMessage.user("hello")),
+            ),
+        )
+
+        val prompt = buildChatOverviewSummaryBackfillPromptSpec(
+            conversation = conversation,
+            settings = Settings(
+                displaySetting = DisplaySetting(
+                    chatOverviewDisplayMode = ChatOverviewDisplayMode.AI_SUMMARY,
+                )
+            ),
+            previewMode = true,
+            dismissedConversationId = null,
+            summaryProgress = ConversationSummaryProgress(
+                queued = true,
+                completed = 0,
+                total = 1,
+            ),
+        )
+
+        assertFalse(prompt.shouldPrompt)
+        assertEquals(1, prompt.missingCount)
+    }
+
+    @Test
     fun `overview summary backfill prompt is skipped after summary generation failure`() {
         val conversation = Conversation(
             id = Uuid.random(),
@@ -223,5 +253,53 @@ class ChatOverviewPreviewSpecTest {
         assertEquals(0.4f, halfDone.progressFraction!!, 0.0f)
         assertEquals(1.0f, overDone.progressFraction!!, 0.0f)
         assertEquals(null, empty.progressFraction)
+        assertTrue(ConversationSummaryProgress(queued = true).active)
+        assertTrue(ConversationSummaryProgress(running = true).active)
+        assertFalse(ConversationSummaryProgress().active)
+    }
+
+    @Test
+    fun `visible summary progress shows queued fallback immediately after user request`() {
+        val visible = buildVisibleChatOverviewSummaryProgress(
+            summaryProgress = ConversationSummaryProgress(),
+            summaryRequested = true,
+            missingCount = 3,
+        )
+
+        assertTrue(visible.queued)
+        assertTrue(visible.active)
+        assertEquals(0, visible.completed)
+        assertEquals(3, visible.total)
+    }
+
+    @Test
+    fun `visible summary progress keeps service state when service is already active or failed`() {
+        val running = ConversationSummaryProgress(
+            running = true,
+            completed = 1,
+            total = 4,
+        )
+        val failed = ConversationSummaryProgress(
+            completed = 1,
+            total = 4,
+            errorMessage = "failed",
+        )
+
+        assertEquals(
+            running,
+            buildVisibleChatOverviewSummaryProgress(
+                summaryProgress = running,
+                summaryRequested = true,
+                missingCount = 3,
+            )
+        )
+        assertEquals(
+            failed,
+            buildVisibleChatOverviewSummaryProgress(
+                summaryProgress = failed,
+                summaryRequested = true,
+                missingCount = 3,
+            )
+        )
     }
 }

@@ -1,12 +1,13 @@
 package me.rerere.rikkahub.data.sync.cloud
 
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class SyncPullPolicyTest {
     @Test
-    fun `manual sync pulls dirty settings from remote even when local state matches remote`() {
+    fun `dirty settings are not pulled from remote before upload`() {
         val key = "settings:assistants"
         val entry = SyncManifestEntry(
             path = "settings/assistants.json",
@@ -27,16 +28,16 @@ class SyncPullPolicyTest {
             dirtyObjects = setOf(key),
         )
 
-        assertTrue(entry.shouldPullSettingsObject(state, key, SyncReason.Manual))
+        assertFalse(entry.shouldPullSettingsObject(state, key))
     }
 
     @Test
-    fun `foreground sync does not pull dirty settings when local state matches remote`() {
+    fun `clean settings pull when remote is newer than local state`() {
         val key = "settings:assistants"
         val entry = SyncManifestEntry(
             path = "settings/assistants.json",
-            version = 3,
-            updatedAt = 30,
+            version = 4,
+            updatedAt = 40,
             hash = "remote-hash",
             deviceId = "tablet",
         )
@@ -49,9 +50,25 @@ class SyncPullPolicyTest {
                     hash = "remote-hash",
                 )
             ),
-            dirtyObjects = setOf(key),
         )
 
-        assertFalse(entry.shouldPullSettingsObject(state, key, SyncReason.Foreground))
+        assertTrue(entry.shouldPullSettingsObject(state, key))
+    }
+
+    @Test
+    fun `push version is above both local and remote versions`() {
+        assertEquals(
+            8,
+            nextSyncVersion(
+                local = LocalObjectState(version = 3),
+                remote = SyncManifestEntry(
+                    path = "settings/assistants.json",
+                    version = 7,
+                    updatedAt = 70,
+                    hash = "remote",
+                    deviceId = "tablet",
+                ),
+            ),
+        )
     }
 }

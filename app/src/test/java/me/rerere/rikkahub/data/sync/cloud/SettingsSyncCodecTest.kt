@@ -9,6 +9,7 @@ import me.rerere.rikkahub.data.sync.s3.S3Config
 import me.rerere.rikkahub.utils.JsonInstant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.uuid.Uuid
 
@@ -102,5 +103,98 @@ class SettingsSyncCodecTest {
 
         assertEquals("old", applied.assistants.single().name)
         assertEquals("synced", applied.lorebooks.single().name)
+    }
+
+    @Test
+    fun `bootstrap upload detects old state that claims remote settings but local content differs`() {
+        val remoteSettings = Settings(assistants = listOf(Assistant(name = "remote")))
+        val localSettings = Settings(assistants = listOf(Assistant(name = "tablet")))
+        val remoteEntry = remoteSettingsEntry(remoteSettings)
+        val key = settingsObjectKey(SettingsSyncKind.Assistants)
+
+        val kinds = bootstrapSettingsKindsToUpload(
+            settings = localSettings,
+            state = CloudSyncState(
+                objectStates = mapOf(
+                    key to LocalObjectState(
+                        version = remoteEntry.version,
+                        updatedAt = remoteEntry.updatedAt,
+                        hash = remoteEntry.hash,
+                    )
+                )
+            ),
+            remoteManifest = SyncManifest(objects = mapOf(key to remoteEntry)),
+        )
+
+        assertEquals(setOf(SettingsSyncKind.Assistants), kinds)
+    }
+
+    @Test
+    fun `bootstrap upload skips settings when local content already matches remote`() {
+        val settings = Settings(assistants = listOf(Assistant(name = "tablet")))
+        val remoteEntry = remoteSettingsEntry(settings)
+        val key = settingsObjectKey(SettingsSyncKind.Assistants)
+
+        val kinds = bootstrapSettingsKindsToUpload(
+            settings = settings,
+            state = CloudSyncState(
+                objectStates = mapOf(
+                    key to LocalObjectState(
+                        version = remoteEntry.version,
+                        updatedAt = remoteEntry.updatedAt,
+                        hash = remoteEntry.hash,
+                    )
+                )
+            ),
+            remoteManifest = SyncManifest(objects = mapOf(key to remoteEntry)),
+        )
+
+        assertTrue(kinds.isEmpty())
+    }
+
+    @Test
+    fun `bootstrap upload does not override a remote settings object newer than local state`() {
+        val localSettings = Settings(assistants = listOf(Assistant(name = "tablet")))
+        val oldEntry = remoteSettingsEntry(Settings(assistants = listOf(Assistant(name = "old"))), version = 1)
+        val newEntry = remoteSettingsEntry(Settings(assistants = listOf(Assistant(name = "remote"))), version = 2)
+        val key = settingsObjectKey(SettingsSyncKind.Assistants)
+
+        val kinds = bootstrapSettingsKindsToUpload(
+            settings = localSettings,
+            state = CloudSyncState(
+                objectStates = mapOf(
+                    key to LocalObjectState(
+                        version = oldEntry.version,
+                        updatedAt = oldEntry.updatedAt,
+                        hash = oldEntry.hash,
+                    )
+                )
+            ),
+            remoteManifest = SyncManifest(objects = mapOf(key to newEntry)),
+        )
+
+        assertTrue(kinds.isEmpty())
+    }
+
+    private fun remoteSettingsEntry(
+        settings: Settings,
+        version: Long = 1,
+    ): SyncManifestEntry {
+        val updatedAt = version * 10
+        val deviceId = "remote-device"
+        val envelope = buildSettingsSyncEnvelope(
+            kind = SettingsSyncKind.Assistants,
+            settings = settings,
+            updatedAt = updatedAt,
+            deviceId = deviceId,
+        )
+        val hash = sha256Hash(JsonInstant.encodeToString(envelope).encodeToByteArray())
+        return SyncManifestEntry(
+            path = SettingsSyncKind.Assistants.path,
+            version = version,
+            updatedAt = updatedAt,
+            hash = hash,
+            deviceId = deviceId,
+        )
     }
 }

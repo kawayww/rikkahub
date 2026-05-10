@@ -11,10 +11,15 @@ internal fun SyncManifestEntry.shouldPullObject(
 internal fun SyncManifestEntry.shouldPullSettingsObject(
     state: CloudSyncState,
     key: String,
-    reason: SyncReason,
 ): Boolean {
     if (deleted) return false
-    if (shouldPullObject(state, key)) return true
+    if (key in state.dirtyObjects) return false
+    return shouldPullObject(state, key)
+}
 
-    return reason == SyncReason.Manual && key in state.dirtyObjects
+internal fun nextSyncVersion(
+    local: LocalObjectState?,
+    remote: SyncManifestEntry?,
+): Long {
+    return maxOf(local?.version ?: 0L, remote?.version ?: 0L) + 1L
 }

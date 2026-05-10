@@ -129,11 +129,17 @@ class CloudSyncManager(
                     state = state,
                     localConversationIds = conversationRepository.getAllConversations()
                         .map { it.id.toString() },
+                    settingsKindsToUpload = bootstrapSettingsKindsToUpload(
+                        settings = initialSettings,
+                        state = state,
+                        remoteManifest = manifest,
+                        json = json,
+                    ),
                 )
                 var currentState = bootstrapDirtyObjects.fold(state) { acc, objectKey ->
                     acc.markDirty(objectKey)
                 }
-                val pullResult = pullRemoteObjects(config, manifest, currentState, reason)
+                val pullResult = pullRemoteObjects(config, manifest, currentState)
                 currentState = pullResult.state
                 val pushResult = pushDirtyObjects(config, manifest, currentState)
                 manifest = pushResult.manifest
@@ -190,7 +196,6 @@ class CloudSyncManager(
         config: CloudSyncConfig,
         manifest: SyncManifest,
         state: CloudSyncState,
-        reason: SyncReason,
     ): PullResult {
         var currentState = state
         val pulledConversationAssistantIds = mutableSetOf<Uuid>()
@@ -208,7 +213,7 @@ class CloudSyncManager(
                     }
                 }
 
-                key.startsWith("settings:") && entry.shouldPullSettingsObject(currentState, key, reason) -> {
+                key.startsWith("settings:") && entry.shouldPullSettingsObject(currentState, key) -> {
                     val result = pullSettings(config, key, entry, currentState)
                     currentState = result.state
                     if (result.pulledSettings) {
@@ -326,7 +331,7 @@ class CloudSyncManager(
         val conversationId = Uuid.parse(key.removePrefix("conversation:"))
         val previous = state.objectStates[key]
         val deleted = previous?.deleted == true && conversationRepository.getConversationById(conversationId) == null
-        val version = (previous?.version ?: manifest.objects[key]?.version ?: 0L) + 1L
+        val version = nextSyncVersion(previous, manifest.objects[key])
         val updatedAt = nowMillis()
 
         if (deleted) {
@@ -419,7 +424,7 @@ class CloudSyncManager(
             pushedObjectCount = 0,
         )
         val previous = state.objectStates[key]
-        val version = (previous?.version ?: manifest.objects[key]?.version ?: 0L) + 1L
+        val version = nextSyncVersion(previous, manifest.objects[key])
         val updatedAt = nowMillis()
         val envelope = buildSettingsSyncEnvelope(
             kind = kind,

@@ -5,6 +5,14 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.encodeToJsonElement
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_COMPRESS_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_OCR_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_SUGGESTION_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TITLE_PROMPT
+import me.rerere.rikkahub.data.ai.prompts.DEFAULT_TRANSLATION_PROMPT
+import me.rerere.rikkahub.data.datastore.DEFAULT_ASSISTANTS
+import me.rerere.rikkahub.data.datastore.DEFAULT_ASSISTANT_ID
+import me.rerere.rikkahub.data.datastore.DEFAULT_MODE_INJECTIONS
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Assistant
 import me.rerere.rikkahub.data.model.Lorebook
@@ -192,6 +200,44 @@ fun changedSettingsKinds(
     }
 }
 
+fun bootstrapSettingsKinds(settings: Settings): Set<SettingsSyncKind> {
+    return buildSet {
+        if (settings.assistants != DEFAULT_ASSISTANTS || settings.assistantId != DEFAULT_ASSISTANT_ID) {
+            add(SettingsSyncKind.Assistants)
+        }
+        if (settings.assistantTags.isNotEmpty()) {
+            add(SettingsSyncKind.AssistantTags)
+        }
+        if (settings.modeInjections != DEFAULT_MODE_INJECTIONS) {
+            add(SettingsSyncKind.PromptInjections)
+        }
+        if (settings.lorebooks.isNotEmpty()) {
+            add(SettingsSyncKind.Lorebooks)
+        }
+        if (settings.quickMessages.isNotEmpty()) {
+            add(SettingsSyncKind.QuickMessages)
+        }
+        if (settings.hasCustomModelSelection()) {
+            add(SettingsSyncKind.ModelSelection)
+        }
+    }
+}
+
+fun bootstrapSettingsKindsToUpload(
+    settings: Settings,
+    state: CloudSyncState,
+    remoteManifest: SyncManifest,
+    json: Json = JsonInstant,
+): Set<SettingsSyncKind> {
+    return bootstrapSettingsKinds(settings).filterTo(mutableSetOf()) { kind ->
+        val key = settingsObjectKey(kind)
+        val remote = remoteManifest.objects[key] ?: return@filterTo true
+        val local = state.objectStates[key] ?: return@filterTo true
+        val localStateMatchesRemote = local.version == remote.version && local.hash == remote.hash
+        localStateMatchesRemote && settingsEnvelopeHash(kind, settings, remote, json) != remote.hash
+    }
+}
+
 private fun Settings.payloadFor(
     kind: SettingsSyncKind,
     json: Json,
@@ -243,4 +289,31 @@ private fun Settings.modelSelectionPayload(): ModelSelectionSettingsPayload {
         compressModelId = compressModelId,
         compressPrompt = compressPrompt,
     )
+}
+
+private fun Settings.hasCustomModelSelection(): Boolean {
+    return enableWebSearch ||
+        favoriteModels.isNotEmpty() ||
+        titlePrompt != DEFAULT_TITLE_PROMPT ||
+        translatePrompt != DEFAULT_TRANSLATION_PROMPT ||
+        translateThinkingBudget != 0 ||
+        suggestionPrompt != DEFAULT_SUGGESTION_PROMPT ||
+        ocrPrompt != DEFAULT_OCR_PROMPT ||
+        compressPrompt != DEFAULT_COMPRESS_PROMPT
+}
+
+private fun settingsEnvelopeHash(
+    kind: SettingsSyncKind,
+    settings: Settings,
+    remote: SyncManifestEntry,
+    json: Json,
+): String {
+    val envelope = buildSettingsSyncEnvelope(
+        kind = kind,
+        settings = settings,
+        updatedAt = remote.updatedAt,
+        deviceId = remote.deviceId,
+        json = json,
+    )
+    return sha256Hash(json.encodeToString(envelope).encodeToByteArray())
 }

@@ -21,6 +21,27 @@ internal data class ChatOverviewSummaryBackfillPromptSpec(
     val missingCount: Int,
 )
 
+internal fun buildVisibleChatOverviewSummaryProgress(
+    summaryProgress: ConversationSummaryProgress,
+    summaryRequested: Boolean,
+    missingCount: Int,
+): ConversationSummaryProgress {
+    return if (
+        summaryRequested &&
+        missingCount > 0 &&
+        !summaryProgress.active &&
+        !summaryProgress.failed
+    ) {
+        ConversationSummaryProgress(
+            queued = true,
+            completed = 0,
+            total = missingCount,
+        )
+    } else {
+        summaryProgress
+    }
+}
+
 internal fun buildChatOverviewSummaryBackfillPromptSpec(
     conversation: Conversation,
     settings: Settings,
@@ -38,7 +59,7 @@ internal fun buildChatOverviewSummaryBackfillPromptSpec(
         shouldPrompt = previewMode &&
             missingCount > 0 &&
             dismissedConversationId != conversation.id &&
-            !summaryProgress.running &&
+            !summaryProgress.active &&
             !summaryProgress.failed,
         missingCount = missingCount,
     )

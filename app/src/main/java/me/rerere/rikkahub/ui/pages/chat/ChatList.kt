@@ -50,6 +50,7 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalFloatingToolbar
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -97,6 +98,7 @@ import me.rerere.rikkahub.data.datastore.getAssistantById
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.service.ChatError
+import me.rerere.rikkahub.service.ConversationSummaryProgress
 import me.rerere.rikkahub.ui.components.message.ChatMessage
 import me.rerere.rikkahub.ui.components.ui.ErrorCardsDisplay
 import me.rerere.rikkahub.ui.components.ui.ListSelectableItem
@@ -119,6 +121,7 @@ fun ChatList(
     loading: Boolean,
     processingStatus: String? = null,
     previewMode: Boolean,
+    summaryProgress: ConversationSummaryProgress = ConversationSummaryProgress(),
     settings: Settings,
     hazeState: HazeState,
     errors: List<ChatError> = emptyList(),
@@ -150,6 +153,7 @@ fun ChatList(
                 innerPadding = innerPadding,
                 conversation = conversation,
                 settings = settings,
+                summaryProgress = summaryProgress,
                 hazeState = hazeState,
                 onJumpToMessage = onJumpToMessage,
                 animatedVisibilityScope = this@AnimatedContent,
@@ -589,6 +593,7 @@ private fun ChatListPreview(
     innerPadding: PaddingValues,
     conversation: Conversation,
     settings: Settings,
+    summaryProgress: ConversationSummaryProgress,
     hazeState: HazeState,
     animatedVisibilityScope: AnimatedVisibilityScope,
     onJumpToMessage: (Int) -> Unit
@@ -650,6 +655,8 @@ private fun ChatListPreview(
             shape = CircleShape,
             maxLines = 1,
         )
+
+        ChatOverviewSummaryProgressBanner(summaryProgress = summaryProgress)
 
         // 消息预览
         LazyColumn(
@@ -721,6 +728,69 @@ private fun ChatListPreview(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatOverviewSummaryProgressBanner(summaryProgress: ConversationSummaryProgress) {
+    if (!summaryProgress.active && !summaryProgress.failed && summaryProgress.total <= 0) {
+        return
+    }
+
+    val color = if (summaryProgress.failed) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    val label = when {
+        summaryProgress.failed -> stringResource(R.string.chat_overview_summary_failed)
+        summaryProgress.running && summaryProgress.total > 0 -> stringResource(
+            R.string.chat_overview_summary_progress,
+            summaryProgress.completed.coerceAtMost(summaryProgress.total),
+            summaryProgress.total,
+        )
+        summaryProgress.active -> stringResource(R.string.chat_overview_summary_progress_indeterminate)
+        else -> stringResource(R.string.chat_overview_summary_done)
+    }
+
+    Surface(
+        color = color.copy(alpha = 0.10f),
+        contentColor = color,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val progressFraction = summaryProgress.progressFraction
+            if (summaryProgress.active && (summaryProgress.queued || progressFraction == null)) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp),
+                    color = color,
+                    trackColor = color.copy(alpha = 0.18f),
+                )
+            } else {
+                LinearProgressIndicator(
+                    progress = { progressFraction ?: 1f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(5.dp),
+                    color = color,
+                    trackColor = color.copy(alpha = 0.18f),
+                )
             }
         }
     }

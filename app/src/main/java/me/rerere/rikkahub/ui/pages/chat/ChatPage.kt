@@ -2,6 +2,7 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -261,6 +263,7 @@ private fun ChatPageContent(
     val toaster = LocalToaster.current
     var previewMode by rememberSaveable { mutableStateOf(false) }
     var dismissedSummaryBackfillConversationId by remember { mutableStateOf<Uuid?>(null) }
+    var requestedSummaryBackfillConversationId by remember(conversation.id) { mutableStateOf<Uuid?>(null) }
     val hazeState = rememberHazeState()
     val summaryBackfillPromptSpec = buildChatOverviewSummaryBackfillPromptSpec(
         conversation = conversation,
@@ -268,6 +271,11 @@ private fun ChatPageContent(
         previewMode = previewMode,
         dismissedConversationId = dismissedSummaryBackfillConversationId,
         summaryProgress = summaryProgress,
+    )
+    val visibleSummaryProgress = buildVisibleChatOverviewSummaryProgress(
+        summaryProgress = summaryProgress,
+        summaryRequested = requestedSummaryBackfillConversationId == conversation.id,
+        missingCount = summaryBackfillPromptSpec.missingCount,
     )
     val summaryFailedMessage = stringResource(R.string.chat_overview_summary_failed)
     var lastSummaryErrorMessage by remember { mutableStateOf<String?>(null) }
@@ -301,7 +309,7 @@ private fun ChatPageContent(
                     bigScreen = bigScreen,
                     drawerState = drawerState,
                     previewMode = previewMode,
-                    summaryProgress = summaryProgress,
+                    summaryProgress = visibleSummaryProgress,
                     onNewChat = {
                         navigateToChatPage(navController)
                     },
@@ -399,6 +407,7 @@ private fun ChatPageContent(
                 loading = loadingJob != null,
                 processingStatus = processingStatus,
                 previewMode = previewMode,
+                summaryProgress = visibleSummaryProgress,
                 settings = setting,
                 hazeState = hazeState,
                 errors = errors,
@@ -477,6 +486,7 @@ private fun ChatPageContent(
         dismissText = stringResource(R.string.chat_overview_summary_backfill_dismiss),
         onConfirm = {
             dismissedSummaryBackfillConversationId = conversation.id
+            requestedSummaryBackfillConversationId = conversation.id
             vm.generateMissingMessageSummaries()
         },
         onDismiss = {
@@ -510,77 +520,84 @@ private fun TopBar(
         onUpdateTitle(it)
     }
 
-    TopAppBar(
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-        navigationIcon = {
-            if (!bigScreen) {
+    Box {
+        TopAppBar(
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+            navigationIcon = {
+                if (!bigScreen) {
+                    IconButton(
+                        onClick = {
+                            scope.launch { drawerState.open() }
+                        }
+                    ) {
+                        Icon(HugeIcons.Menu03, "Messages")
+                    }
+                }
+            },
+            title = {
+                val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
+                Surface(
+                    onClick = {
+                        if (conversation.messageNodes.isNotEmpty()) {
+                            titleState.open(conversation.title)
+                        } else {
+                            toaster.show(editTitleWarning, type = ToastType.Warning)
+                        }
+                    },
+                    color = Color.Transparent,
+                ) {
+                    Column {
+                        val assistant = settings.getCurrentAssistant()
+                        val model = settings.getCurrentChatModel()
+                        val provider = model?.findProvider(providers = settings.providers, checkOverwrite = false)
+                        Text(
+                            text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
+                            maxLines = 1,
+                            style = MaterialTheme.typography.bodyMedium,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (model != null && provider != null) {
+                            Text(
+                                text = "${assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }} / ${model.displayName} (${provider.name})",
+                                overflow = TextOverflow.Ellipsis,
+                                maxLines = 1,
+                                color = LocalContentColor.current.copy(0.65f),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 8.sp,
+                                )
+                            )
+                        }
+                    }
+                }
+            },
+            actions = {
                 IconButton(
                     onClick = {
-                        scope.launch { drawerState.open() }
+                        onClickMenu()
                     }
                 ) {
-                    Icon(HugeIcons.Menu03, "Messages")
+                    Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
                 }
-            }
-        },
-        title = {
-            val editTitleWarning = stringResource(R.string.chat_page_edit_title_warning)
-            Surface(
-                onClick = {
-                    if (conversation.messageNodes.isNotEmpty()) {
-                        titleState.open(conversation.title)
-                    } else {
-                        toaster.show(editTitleWarning, type = ToastType.Warning)
-                    }
-                },
-                color = Color.Transparent,
-            ) {
-                Column {
-                    val assistant = settings.getCurrentAssistant()
-                    val model = settings.getCurrentChatModel()
-                    val provider = model?.findProvider(providers = settings.providers, checkOverwrite = false)
-                    Text(
-                        text = conversation.title.ifBlank { stringResource(R.string.chat_page_new_chat) },
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (model != null && provider != null) {
-                        Text(
-                            text = "${assistant.name.ifBlank { stringResource(R.string.assistant_page_default_assistant) }} / ${model.displayName} (${provider.name})",
-                            overflow = TextOverflow.Ellipsis,
-                            maxLines = 1,
-                            color = LocalContentColor.current.copy(0.65f),
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 8.sp,
-                            )
-                        )
-                    }
-                }
-            }
-        },
-        actions = {
-            if (previewMode) {
-                SummaryProgressChip(summaryProgress)
-            }
 
-            IconButton(
-                onClick = {
-                    onClickMenu()
+                IconButton(
+                    onClick = {
+                        onNewChat()
+                    }
+                ) {
+                    Icon(HugeIcons.MessageAdd01, "New Message")
                 }
-            ) {
-                Icon(if (previewMode) HugeIcons.Cancel01 else HugeIcons.LeftToRightListBullet, "Chat Options")
-            }
+            },
+        )
 
-            IconButton(
-                onClick = {
-                    onNewChat()
-                }
-            ) {
-                Icon(HugeIcons.MessageAdd01, "New Message")
-            }
-        },
-    )
+        if (previewMode) {
+            SummaryProgressChip(
+                summaryProgress = summaryProgress,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 96.dp),
+            )
+        }
+    }
     titleState.EditStateContent { title, onUpdate ->
         AlertDialog(
             onDismissRequest = {
@@ -620,8 +637,11 @@ private fun TopBar(
 }
 
 @Composable
-private fun SummaryProgressChip(summaryProgress: ConversationSummaryProgress) {
-    if (!summaryProgress.running && !summaryProgress.failed && summaryProgress.total <= 0) {
+private fun SummaryProgressChip(
+    summaryProgress: ConversationSummaryProgress,
+    modifier: Modifier = Modifier,
+) {
+    if (!summaryProgress.active && !summaryProgress.failed && summaryProgress.total <= 0) {
         return
     }
 
@@ -637,7 +657,7 @@ private fun SummaryProgressChip(summaryProgress: ConversationSummaryProgress) {
             summaryProgress.completed.coerceAtMost(summaryProgress.total),
             summaryProgress.total,
         )
-        summaryProgress.running -> stringResource(R.string.chat_overview_summary_progress_indeterminate)
+        summaryProgress.active -> stringResource(R.string.chat_overview_summary_progress_indeterminate)
         else -> stringResource(R.string.chat_overview_summary_done)
     }
 
@@ -645,13 +665,13 @@ private fun SummaryProgressChip(summaryProgress: ConversationSummaryProgress) {
         color = color.copy(alpha = 0.12f),
         contentColor = color,
         shape = MaterialTheme.shapes.small,
-        modifier = Modifier.padding(end = 4.dp),
+        modifier = modifier,
     ) {
         Column(
             modifier = Modifier
-                .width(92.dp)
-                .padding(horizontal = 8.dp, vertical = 5.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp),
+                .width(120.dp)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
                 text = label,
@@ -660,11 +680,11 @@ private fun SummaryProgressChip(summaryProgress: ConversationSummaryProgress) {
                 style = MaterialTheme.typography.labelSmall,
             )
             val progressFraction = summaryProgress.progressFraction
-            if (summaryProgress.running && progressFraction == null) {
+            if (summaryProgress.active && (summaryProgress.queued || progressFraction == null)) {
                 LinearProgressIndicator(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(2.dp),
+                        .height(4.dp),
                     color = color,
                     trackColor = color.copy(alpha = 0.18f),
                 )
@@ -673,7 +693,7 @@ private fun SummaryProgressChip(summaryProgress: ConversationSummaryProgress) {
                     progress = { progressFraction ?: 1f },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(2.dp),
+                        .height(4.dp),
                     color = color,
                     trackColor = color.copy(alpha = 0.18f),
                 )

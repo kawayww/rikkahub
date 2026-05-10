@@ -113,11 +113,15 @@ enum class ChatErrorSolution {
 }
 
 data class ConversationSummaryProgress(
+    val queued: Boolean = false,
     val running: Boolean = false,
     val completed: Int = 0,
     val total: Int = 0,
     val errorMessage: String? = null,
 ) {
+    val active: Boolean
+        get() = queued || running
+
     val failed: Boolean
         get() = errorMessage != null
 
@@ -661,6 +665,8 @@ class ChatService(
     }
 
     private fun scheduleConversationSummaryGeneration(conversationId: Uuid) {
+        markConversationSummaryQueued(conversationId)
+
         val runningJob = summaryJobs[conversationId]
         if (runningJob?.isActive == true) {
             summaryRerunRequests[conversationId] = Unit
@@ -684,6 +690,25 @@ class ChatService(
         scheduleConversationSummaryGeneration(conversationId)
     }
 
+    private fun markConversationSummaryQueued(conversationId: Uuid) {
+        val total = getConversationFlow(conversationId).value.pendingSummaryCandidates().size
+        updateConversationSummaryProgress(conversationId) { current ->
+            when {
+                total <= 0 && !current.active -> ConversationSummaryProgress()
+                current.running -> current.copy(
+                    queued = true,
+                    total = maxOf(current.total, total),
+                    errorMessage = null,
+                )
+                else -> ConversationSummaryProgress(
+                    queued = total > 0,
+                    completed = 0,
+                    total = total,
+                )
+            }
+        }
+    }
+
     private suspend fun generateConversationSummaries(conversationId: Uuid) {
         val initialConversation = conversationRepo.getConversationById(conversationId)
             ?: getConversationFlow(conversationId).value
@@ -691,6 +716,7 @@ class ChatService(
         var completed = 0
         updateConversationSummaryProgress(conversationId) {
             ConversationSummaryProgress(
+                queued = false,
                 running = true,
                 completed = completed,
                 total = total,
@@ -699,7 +725,10 @@ class ChatService(
 
         if (total == 0) {
             updateConversationSummaryProgress(conversationId) {
-                it.copy(running = false)
+                it.copy(
+                    queued = false,
+                    running = false,
+                )
             }
             return
         }
@@ -789,19 +818,24 @@ class ChatService(
             val finalCompleted = maxOf(completed, total - missingCount).coerceIn(0, total)
             updateConversationSummaryProgress(conversationId) {
                 it.copy(
+                    queued = false,
                     running = false,
                     completed = finalCompleted,
                 )
             }
         } catch (e: CancellationException) {
             updateConversationSummaryProgress(conversationId) {
-                it.copy(running = false)
+                it.copy(
+                    queued = false,
+                    running = false,
+                )
             }
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "generateConversationSummaries failed", e)
             updateConversationSummaryProgress(conversationId) {
                 it.copy(
+                    queued = false,
                     running = false,
                     errorMessage = e.localizedMessage ?: e.message ?: e::class.java.simpleName,
                 )

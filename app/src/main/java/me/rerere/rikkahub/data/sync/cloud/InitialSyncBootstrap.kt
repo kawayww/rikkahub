@@ -5,6 +5,7 @@ fun initialSyncDirtyObjects(
     state: CloudSyncState,
     localConversationIds: List<String>,
     settingsKinds: Set<SettingsSyncKind> = SettingsSyncKind.entries.toSet(),
+    settingsKindsToUpload: Set<SettingsSyncKind> = emptySet(),
 ): Set<String> {
     val remoteObjects = remoteManifest.objects
 
@@ -17,7 +18,7 @@ fun initialSyncDirtyObjects(
         }
         settingsKinds.forEach { kind ->
             val key = settingsObjectKey(kind)
-            if (key !in remoteObjects) {
+            if (key !in remoteObjects || kind in settingsKindsToUpload) {
                 add(key)
             }
         }
