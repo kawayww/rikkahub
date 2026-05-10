@@ -40,6 +40,8 @@ import me.rerere.rikkahub.data.model.Lorebook
 import me.rerere.rikkahub.data.model.PromptInjection
 import me.rerere.rikkahub.data.model.QuickMessage
 import me.rerere.rikkahub.data.model.Tag
+import me.rerere.rikkahub.data.sync.cloud.CloudSyncConfig
+import me.rerere.rikkahub.data.sync.cloud.CloudSyncState
 import me.rerere.rikkahub.data.sync.s3.S3Config
 import me.rerere.rikkahub.ui.theme.PresetThemes
 import me.rerere.rikkahub.utils.JsonInstant
@@ -49,6 +51,7 @@ import me.rerere.search.SearchServiceOptions
 import me.rerere.tts.provider.TTSProviderSetting
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
+import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.uuid.Uuid
 
 private const val TAG = "PreferencesStore"
@@ -118,6 +121,10 @@ class SettingsStore(
         // S3
         val S3_CONFIG = stringPreferencesKey("s3_config")
 
+        // Cloud Sync
+        val CLOUD_SYNC_CONFIG = stringPreferencesKey("cloud_sync_config")
+        val CLOUD_SYNC_STATE = stringPreferencesKey("cloud_sync_state")
+
         // TTS
         val TTS_PROVIDERS = stringPreferencesKey("tts_providers")
         val SELECTED_TTS_PROVIDER = stringPreferencesKey("selected_tts_provider")
@@ -149,6 +156,7 @@ class SettingsStore(
     }
 
     private val dataStore = context.settingsStore
+    private val updateListeners = CopyOnWriteArraySet<suspend (old: Settings, new: Settings) -> Unit>()
 
     val settingsFlowRaw = dataStore.data
         .catch { exception ->
@@ -209,6 +217,12 @@ class SettingsStore(
                 s3Config = preferences[S3_CONFIG]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: S3Config(),
+                cloudSyncConfig = preferences[CLOUD_SYNC_CONFIG]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: CloudSyncConfig(),
+                cloudSyncState = preferences[CLOUD_SYNC_STATE]?.let {
+                    JsonInstant.decodeFromString(it)
+                } ?: CloudSyncState(),
                 ttsProviders = preferences[TTS_PROVIDERS]?.let {
                     JsonInstant.decodeFromString(it)
                 } ?: emptyList(),
@@ -343,6 +357,7 @@ class SettingsStore(
             Log.w(TAG, "Cannot update dummy settings")
             return
         }
+        val previous = settingsFlow.value
         settingsFlow.value = settings
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR] = settings.dynamicColor
@@ -380,6 +395,8 @@ class SettingsStore(
             preferences[MCP_SERVERS] = JsonInstant.encodeToString(settings.mcpServers)
             preferences[WEBDAV_CONFIG] = JsonInstant.encodeToString(settings.webDavConfig)
             preferences[S3_CONFIG] = JsonInstant.encodeToString(settings.s3Config)
+            preferences[CLOUD_SYNC_CONFIG] = JsonInstant.encodeToString(settings.cloudSyncConfig)
+            preferences[CLOUD_SYNC_STATE] = JsonInstant.encodeToString(settings.cloudSyncState)
             preferences[TTS_PROVIDERS] = JsonInstant.encodeToString(settings.ttsProviders)
             settings.selectedTTSProviderId?.let {
                 preferences[SELECTED_TTS_PROVIDER] = it.toString()
@@ -400,10 +417,20 @@ class SettingsStore(
             preferences[LAUNCH_COUNT] = settings.launchCount
             preferences[SPONSOR_ALERT_DISMISSED_AT] = settings.sponsorAlertDismissedAt
         }
+        if (!previous.init && previous != settings) {
+            updateListeners.forEach { listener ->
+                listener(previous, settings)
+            }
+        }
     }
 
     suspend fun update(fn: (Settings) -> Settings) {
         update(fn(settingsFlow.value))
+    }
+
+    fun addUpdateListener(listener: suspend (old: Settings, new: Settings) -> Unit): () -> Unit {
+        updateListeners.add(listener)
+        return { updateListeners.remove(listener) }
     }
 
     suspend fun updateAssistant(assistantId: Uuid) {
@@ -512,6 +539,8 @@ data class Settings(
     val mcpServers: List<McpServerConfig> = emptyList(),
     val webDavConfig: WebDavConfig = WebDavConfig(),
     val s3Config: S3Config = S3Config(),
+    val cloudSyncConfig: CloudSyncConfig = CloudSyncConfig(),
+    val cloudSyncState: CloudSyncState = CloudSyncState(),
     val ttsProviders: List<TTSProviderSetting> = DEFAULT_TTS_PROVIDERS,
     val selectedTTSProviderId: Uuid = DEFAULT_SYSTEM_TTS_ID,
     val asrProviders: List<ASRProviderSetting> = emptyList(),

@@ -10,6 +10,8 @@ import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
 import me.rerere.rikkahub.data.repository.ConversationRepository
+import me.rerere.rikkahub.data.sync.cloud.CloudSyncManager
+import me.rerere.rikkahub.data.sync.cloud.SyncReason
 import me.rerere.rikkahub.data.sync.importer.ChatboxImporter
 import me.rerere.rikkahub.data.sync.importer.CherryStudioProviderImporter
 import me.rerere.rikkahub.data.sync.webdav.WebDavBackupItem
@@ -26,6 +28,7 @@ class BackupVM(
     private val webDavSync: WebDavSync,
     private val s3Sync: S3Sync,
     private val conversationRepository: ConversationRepository,
+    private val cloudSyncManager: CloudSyncManager,
 ) : ViewModel() {
     val settings = settingsStore.settingsFlow.stateIn(
         scope = viewModelScope,
@@ -35,6 +38,11 @@ class BackupVM(
 
     val webDavBackupItems = MutableStateFlow<UiState<List<WebDavBackupItem>>>(UiState.Idle)
     val s3BackupItems = MutableStateFlow<UiState<List<S3BackupItem>>>(UiState.Idle)
+    val cloudSyncStatus = cloudSyncManager.status.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = cloudSyncManager.status.value,
+    )
 
     init {
         loadBackupFileItems()
@@ -66,6 +74,14 @@ class BackupVM(
 
     suspend fun testWebDav() {
         webDavSync.testConnection(settings.value.webDavConfig)
+    }
+
+    suspend fun testCloudSync() {
+        cloudSyncManager.testConnection(settings.value.cloudSyncConfig)
+    }
+
+    suspend fun syncNow() {
+        cloudSyncManager.syncNow(SyncReason.Manual)
     }
 
     suspend fun backup() {

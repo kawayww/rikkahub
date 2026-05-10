@@ -86,6 +86,7 @@ import me.rerere.rikkahub.data.model.replaceRegexes
 import me.rerere.rikkahub.data.model.toMessageNode
 import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.MemoryRepository
+import me.rerere.rikkahub.data.sync.cloud.CloudSyncManager
 import me.rerere.rikkahub.web.BadRequestException
 import me.rerere.rikkahub.web.NotFoundException
 import me.rerere.rikkahub.utils.applyPlaceholders
@@ -142,6 +143,7 @@ class ChatService(
     val mcpManager: McpManager,
     private val filesManager: FilesManager,
     private val skillManager: SkillManager,
+    private val cloudSyncManager: CloudSyncManager,
 ) {
     // 统一会话管理
     private val sessions = ConcurrentHashMap<Uuid, ConversationSession>()
@@ -1126,6 +1128,11 @@ class ChatService(
             conversationRepo.insertConversation(updatedConversation)
         } else {
             conversationRepo.updateConversation(updatedConversation)
+        }
+        runCatching {
+            cloudSyncManager.markConversationDirty(updatedConversation.id)
+        }.onFailure {
+            Log.e(TAG, "saveConversation: failed to mark cloud sync dirty", it)
         }
     }
 

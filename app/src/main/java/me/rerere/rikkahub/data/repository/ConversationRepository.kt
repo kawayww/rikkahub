@@ -23,6 +23,7 @@ import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
 import me.rerere.rikkahub.utils.JsonInstant
 import java.time.Instant
+import java.util.concurrent.CopyOnWriteArraySet
 import kotlin.uuid.Uuid
 
 class ConversationRepository(
@@ -36,6 +37,13 @@ class ConversationRepository(
     companion object {
         private const val PAGE_SIZE = 20
         private const val INITIAL_LOAD_SIZE = 40
+    }
+
+    private val changeListeners = CopyOnWriteArraySet<suspend (ConversationChange) -> Unit>()
+
+    fun addChangeListener(listener: suspend (ConversationChange) -> Unit): () -> Unit {
+        changeListeners.add(listener)
+        return { changeListeners.remove(listener) }
     }
 
     suspend fun getRecentConversations(assistantId: Uuid, limit: Int = 10): List<Conversation> {
@@ -202,7 +210,20 @@ class ConversationRepository(
         return conversationDAO.existsById(uuid.toString())
     }
 
+    suspend fun getAllConversations(): List<Conversation> {
+        return conversationDAO.getAllIds().mapNotNull { id ->
+            getConversationById(Uuid.parse(id))
+        }
+    }
+
     suspend fun insertConversation(conversation: Conversation) {
+        insertConversation(conversation, notify = true)
+    }
+
+    private suspend fun insertConversation(
+        conversation: Conversation,
+        notify: Boolean,
+    ) {
         database.withTransaction {
             conversationDAO.insert(
                 conversationToConversationEntity(conversation)
@@ -210,9 +231,17 @@ class ConversationRepository(
             saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
         }
         messageFtsManager.indexConversation(conversation)
+        if (notify) notifyChange(ConversationChange.Upsert(conversation.id))
     }
 
     suspend fun updateConversation(conversation: Conversation) {
+        updateConversation(conversation, notify = true)
+    }
+
+    private suspend fun updateConversation(
+        conversation: Conversation,
+        notify: Boolean,
+    ) {
         database.withTransaction {
             conversationDAO.update(
                 conversationToConversationEntity(conversation)
@@ -222,6 +251,15 @@ class ConversationRepository(
             saveMessageNodes(conversation.id.toString(), conversation.messageNodes)
         }
         messageFtsManager.indexConversation(conversation)
+        if (notify) notifyChange(ConversationChange.Upsert(conversation.id))
+    }
+
+    suspend fun upsertConversationFromSync(conversation: Conversation) {
+        if (existsConversationById(conversation.id)) {
+            updateConversation(conversation, notify = false)
+        } else {
+            insertConversation(conversation, notify = false)
+        }
     }
 
     suspend fun deleteConversation(conversation: Conversation) {
@@ -239,6 +277,14 @@ class ConversationRepository(
             )
         }
         filesManager.deleteChatFiles(fullConversation.files)
+        notifyChange(ConversationChange.Delete(conversation.id))
+    }
+
+    suspend fun deleteConversationFromSync(conversationId: Uuid) {
+        messageFtsManager.deleteConversation(conversationId.toString())
+        database.withTransaction {
+            conversationDAO.deleteById(conversationId.toString())
+        }
     }
 
     suspend fun searchMessages(keyword: String) = messageFtsManager.search(keyword)
@@ -309,6 +355,13 @@ class ConversationRepository(
             id = conversationId.toString(),
             isPinned = !(getConversationById(conversationId)?.isPinned ?: false)
         )
+        notifyChange(ConversationChange.Upsert(conversationId))
+    }
+
+    private suspend fun notifyChange(change: ConversationChange) {
+        changeListeners.forEach { listener ->
+            listener(change)
+        }
     }
 
     private fun conversationSummaryToConversation(entity: LightConversationEntity): Conversation {
@@ -394,3 +447,15 @@ data class ConversationPageResult(
     val items: List<Conversation>,
     val nextOffset: Int?,
 )
+
+sealed interface ConversationChange {
+    val conversationId: Uuid
+
+    data class Upsert(
+        override val conversationId: Uuid,
+    ) : ConversationChange
+
+    data class Delete(
+        override val conversationId: Uuid,
+    ) : ConversationChange
+}

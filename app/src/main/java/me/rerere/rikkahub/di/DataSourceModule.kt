@@ -31,7 +31,10 @@ import me.rerere.rikkahub.data.db.migrations.Migration_13_14
 import me.rerere.rikkahub.data.db.migrations.Migration_14_15
 import me.rerere.rikkahub.data.db.migrations.Migration_15_16
 import me.rerere.rikkahub.data.ai.mcp.McpManager
+import me.rerere.rikkahub.data.sync.cloud.CloudSyncManager
+import me.rerere.rikkahub.data.sync.cloud.SyncObjectStore
 import me.rerere.rikkahub.data.sync.webdav.WebDavSync
+import me.rerere.rikkahub.data.sync.webdav.WebDavObjectStore
 import me.rerere.search.SearchService
 import me.rerere.rikkahub.data.sync.S3Sync
 import okhttp3.MediaType.Companion.toMediaType
@@ -215,6 +218,21 @@ val dataSourceModule = module {
             json = get(),
             context = get(),
             httpClient = get()
+        )
+    }
+
+    single<SyncObjectStore> {
+        WebDavObjectStore(httpClient = get())
+    }
+
+    single {
+        CloudSyncManager(
+            appScope = get(),
+            settingsStore = get(),
+            conversationRepository = get(),
+            filesManager = get(),
+            objectStore = get(),
+            json = get()
         )
     }
 
