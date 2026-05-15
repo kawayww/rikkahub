@@ -34,12 +34,12 @@ class InitialSyncBootstrapTest {
     }
 
     @Test
-    fun `non empty remote manifest does not bootstrap local settings over remote data`() {
+    fun `non empty remote manifest bootstraps local conversations missing from remote`() {
         val dirtyObjects = initialSyncDirtyObjects(
             remoteManifest = SyncManifest(
                 objects = mapOf(
-                    "conversation:a" to SyncManifestEntry(
-                        path = "conversations/a.json",
+                    "settings:assistants" to SyncManifestEntry(
+                        path = "settings/assistants.json",
                         version = 1,
                         updatedAt = 10,
                         hash = "hash",
@@ -49,8 +49,30 @@ class InitialSyncBootstrapTest {
             ),
             state = CloudSyncState(deviceId = "phone"),
             localConversationIds = listOf("phone-local"),
+            settingsKinds = setOf(SettingsSyncKind.Assistants),
         )
 
-        assertEquals(emptySet<String>(), dirtyObjects)
+        assertEquals(setOf("conversation:phone-local"), dirtyObjects)
+    }
+
+    @Test
+    fun `old local object state does not prevent uploading conversations missing from current remote`() {
+        val dirtyObjects = initialSyncDirtyObjects(
+            remoteManifest = SyncManifest(),
+            state = CloudSyncState(
+                deviceId = "tablet",
+                objectStates = mapOf(
+                    "conversation:a" to LocalObjectState(
+                        version = 3,
+                        updatedAt = 30,
+                        hash = "old-remote-hash",
+                    )
+                ),
+            ),
+            localConversationIds = listOf("a"),
+            settingsKinds = emptySet(),
+        )
+
+        assertEquals(setOf("conversation:a"), dirtyObjects)
     }
 }

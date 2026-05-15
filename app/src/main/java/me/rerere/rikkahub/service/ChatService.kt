@@ -112,6 +112,23 @@ enum class ChatErrorSolution {
     CheckTitleModelSettings,
 }
 
+data class ConversationSummaryProgress(
+    val running: Boolean = false,
+    val completed: Int = 0,
+    val total: Int = 0,
+    val errorMessage: String? = null,
+) {
+    val failed: Boolean
+        get() = errorMessage != null
+
+    val progressFraction: Float?
+        get() = if (total <= 0) {
+            null
+        } else {
+            (completed.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+        }
+}
+
 private val inputTransformers by lazy {
     listOf(
         TimeReminderTransformer,
@@ -150,6 +167,7 @@ class ChatService(
     private val _sessionsVersion = MutableStateFlow(0L)
     private val summaryJobs = ConcurrentHashMap<Uuid, Job>()
     private val summaryRerunRequests = ConcurrentHashMap<Uuid, Unit>()
+    private val summaryProgressStates = ConcurrentHashMap<Uuid, MutableStateFlow<ConversationSummaryProgress>>()
 
     // 错误状态
     private val _errors = MutableStateFlow<List<ChatError>>(emptyList())
@@ -203,6 +221,7 @@ class ChatService(
         summaryJobs.values.forEach { it.cancel() }
         summaryJobs.clear()
         summaryRerunRequests.clear()
+        summaryProgressStates.clear()
     }
 
     // ---- Session 管理 ----
@@ -274,6 +293,25 @@ class ChatService(
     fun getProcessingStatusFlow(conversationId: Uuid): StateFlow<String?> {
         val session = sessions[conversationId] ?: return MutableStateFlow(null)
         return session.processingStatus
+    }
+
+    fun getConversationSummaryProgressFlow(conversationId: Uuid): StateFlow<ConversationSummaryProgress> {
+        return getConversationSummaryProgressState(conversationId).asStateFlow()
+    }
+
+    private fun getConversationSummaryProgressState(
+        conversationId: Uuid
+    ): MutableStateFlow<ConversationSummaryProgress> {
+        return summaryProgressStates.getOrPut(conversationId) {
+            MutableStateFlow(ConversationSummaryProgress())
+        }
+    }
+
+    private fun updateConversationSummaryProgress(
+        conversationId: Uuid,
+        transform: (ConversationSummaryProgress) -> ConversationSummaryProgress
+    ) {
+        getConversationSummaryProgressState(conversationId).update(transform)
     }
 
     fun getConversationJobs(): Flow<Map<Uuid, Job?>> {
@@ -647,10 +685,31 @@ class ChatService(
     }
 
     private suspend fun generateConversationSummaries(conversationId: Uuid) {
-        runCatching {
+        val initialConversation = conversationRepo.getConversationById(conversationId)
+            ?: getConversationFlow(conversationId).value
+        val total = initialConversation.pendingSummaryCandidates().size
+        var completed = 0
+        updateConversationSummaryProgress(conversationId) {
+            ConversationSummaryProgress(
+                running = true,
+                completed = completed,
+                total = total,
+            )
+        }
+
+        if (total == 0) {
+            updateConversationSummaryProgress(conversationId) {
+                it.copy(running = false)
+            }
+            return
+        }
+
+        try {
             val settings = settingsStore.settingsFlow.first()
-            val model = settings.findModelById(settings.conversationSummaryModelId) ?: return
-            val provider = model.findProvider(settings.providers) ?: return
+            val model = settings.findModelById(settings.conversationSummaryModelId)
+                ?: throw IllegalStateException(context.getString(R.string.chat_overview_summary_backfill_model_missing))
+            val provider = model.findProvider(settings.providers)
+                ?: throw IllegalStateException(context.getString(R.string.chat_overview_summary_provider_missing))
             val providerHandler = providerManager.getProviderByType(provider)
             val locale = Locale.getDefault()
 
@@ -663,6 +722,10 @@ class ChatService(
                     ?.firstOrNull { it.id == candidate.id }
 
                 if (currentCandidate?.summary?.isNotBlank() == true) {
+                    completed = (completed + 1).coerceAtMost(total)
+                    updateConversationSummaryProgress(conversationId) {
+                        it.copy(completed = completed)
+                    }
                     continue
                 }
 
@@ -691,8 +754,7 @@ class ChatService(
                     cleanGeneratedMessageSummary(candidate.summarySourceText()).take(240)
                 }
                 if (summary.isBlank()) {
-                    Log.w(TAG, "generateConversationSummaries: blank summary for ${candidate.id}")
-                    break
+                    throw IllegalStateException(context.getString(R.string.chat_overview_summary_blank_result))
                 }
 
                 val latestConversation = conversationRepo.getConversationById(conversationId)
@@ -715,11 +777,40 @@ class ChatService(
                     }
                 )
                 saveConversation(conversationId, updatedConversation)
+                completed = (completed + 1).coerceAtMost(total)
+                updateConversationSummaryProgress(conversationId) {
+                    it.copy(completed = completed)
+                }
             }
-        }.onFailure {
-            if (it !is CancellationException) {
-                Log.w(TAG, "generateConversationSummaries failed", it)
+
+            val latestConversation = conversationRepo.getConversationById(conversationId)
+                ?: getConversationFlow(conversationId).value
+            val missingCount = latestConversation.pendingSummaryCandidates().size.coerceAtMost(total)
+            val finalCompleted = maxOf(completed, total - missingCount).coerceIn(0, total)
+            updateConversationSummaryProgress(conversationId) {
+                it.copy(
+                    running = false,
+                    completed = finalCompleted,
+                )
             }
+        } catch (e: CancellationException) {
+            updateConversationSummaryProgress(conversationId) {
+                it.copy(running = false)
+            }
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "generateConversationSummaries failed", e)
+            updateConversationSummaryProgress(conversationId) {
+                it.copy(
+                    running = false,
+                    errorMessage = e.localizedMessage ?: e.message ?: e::class.java.simpleName,
+                )
+            }
+            addError(
+                e,
+                conversationId,
+                title = context.getString(R.string.error_title_message_summary)
+            )
         }
     }
 

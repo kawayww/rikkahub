@@ -1038,4 +1038,21 @@
   <string name="chat_overview_summary_backfill_confirm">產生摘要</string>
   <string name="chat_overview_summary_backfill_dismiss">暫不產生</string>
   <string name="chat_overview_summary_backfill_model_missing">請先設定聊天對話摘要模型</string>
+  <string name="backup_page_cloud_sync">雲端同步</string>
+  <string name="backup_page_cloud_sync_dirty_objects">待同步物件：%1$d</string>
+  <string name="backup_page_cloud_sync_last_pull">上次拉取：%1$s</string>
+  <string name="backup_page_cloud_sync_last_push">上次上傳：%1$s</string>
+  <string name="backup_page_cloud_sync_last_result">上次結果：遠端 %1$d，拉取對話 %2$d，拉取設定 %3$d，上傳物件 %4$d</string>
+  <string name="backup_page_cloud_sync_sync_path">同步路徑</string>
+  <string name="backup_page_cloud_sync_testing">測試中...</string>
+  <string name="backup_page_cloud_sync_sync_now">立即同步</string>
+  <string name="backup_page_cloud_sync_syncing">同步中</string>
+  <string name="backup_page_cloud_sync_finished">同步完成</string>
+  <string name="backup_page_cloud_sync_failed">同步失敗：%1$s</string>
+  <string name="backup_page_cloud_sync_never">從未</string>
+  <string name="backup_page_cloud_sync_status_idle">閒置</string>
+  <string name="backup_page_cloud_sync_status_syncing">同步中</string>
+  <string name="backup_page_cloud_sync_status_synced">已同步</string>
+  <string name="backup_page_cloud_sync_status_waiting_for_network">等待網路</string>
+  <string name="backup_page_cloud_sync_status_error">錯誤</string>
 </resources>

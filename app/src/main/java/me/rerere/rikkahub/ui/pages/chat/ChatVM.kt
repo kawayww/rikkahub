@@ -37,6 +37,7 @@ import me.rerere.rikkahub.data.repository.ConversationRepository
 import me.rerere.rikkahub.data.repository.FavoriteRepository
 import me.rerere.rikkahub.service.ChatError
 import me.rerere.rikkahub.service.ChatService
+import me.rerere.rikkahub.service.ConversationSummaryProgress
 import me.rerere.rikkahub.ui.hooks.writeStringPreference
 import me.rerere.rikkahub.ui.hooks.ChatInputState
 import me.rerere.rikkahub.utils.UiState
@@ -73,6 +74,11 @@ class ChatVM(
     val processingStatus: StateFlow<String?> =
         chatService
             .getProcessingStatusFlow(_conversationId)
+
+    val summaryProgress: StateFlow<ConversationSummaryProgress> =
+        chatService
+            .getConversationSummaryProgressFlow(_conversationId)
+            .stateIn(viewModelScope, SharingStarted.Eagerly, ConversationSummaryProgress())
 
     val conversationJobs = chatService
         .getConversationJobs()

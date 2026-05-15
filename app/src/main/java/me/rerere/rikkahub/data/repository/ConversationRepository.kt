@@ -56,6 +56,15 @@ class ConversationRepository(
         }
     }
 
+    suspend fun countConversationsOfAssistant(assistantId: Uuid): Int {
+        return conversationDAO.countConversationsOfAssistant(assistantId.toString())
+    }
+
+    suspend fun getAssistantIdsWithConversations(): List<Uuid> {
+        return conversationDAO.getAssistantIdsWithConversations()
+            .mapNotNull { id -> runCatching { Uuid.parse(id) }.getOrNull() }
+    }
+
     fun getConversationsOfAssistant(assistantId: Uuid): Flow<List<Conversation>> {
         return conversationDAO
             .getConversationsOfAssistant(assistantId.toString())

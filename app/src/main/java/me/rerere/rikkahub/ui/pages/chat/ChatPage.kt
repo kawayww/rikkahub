@@ -2,9 +2,13 @@ package me.rerere.rikkahub.ui.pages.chat
 
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
@@ -12,6 +16,7 @@ import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
@@ -54,13 +59,13 @@ import me.rerere.hugeicons.stroke.Menu03
 import me.rerere.hugeicons.stroke.MessageAdd01
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.datastore.Settings
-import me.rerere.rikkahub.data.datastore.findModelById
 import me.rerere.rikkahub.data.datastore.findProvider
 import me.rerere.rikkahub.data.datastore.getCurrentAssistant
 import me.rerere.rikkahub.data.datastore.getCurrentChatModel
 import me.rerere.rikkahub.data.files.FilesManager
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.service.ChatError
+import me.rerere.rikkahub.service.ConversationSummaryProgress
 import me.rerere.rikkahub.ui.components.ai.ChatInput
 import me.rerere.rikkahub.ui.components.ui.RikkaConfirmDialog
 import me.rerere.rikkahub.ui.context.LocalNavController
@@ -91,6 +96,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
     val conversation by vm.conversation.collectAsStateWithLifecycle()
     val loadingJob by vm.conversationJob.collectAsStateWithLifecycle()
     val processingStatus by vm.processingStatus.collectAsStateWithLifecycle()
+    val summaryProgress by vm.summaryProgress.collectAsStateWithLifecycle()
     val currentChatModel by vm.currentChatModel.collectAsStateWithLifecycle()
     val enableWebSearch by vm.enableWebSearch.collectAsStateWithLifecycle()
     val errors by vm.errors.collectAsStateWithLifecycle()
@@ -177,6 +183,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     inputState = inputState,
                     loadingJob = loadingJob,
                     processingStatus = processingStatus,
+                    summaryProgress = summaryProgress,
                     setting = setting,
                     conversation = conversation,
                     drawerState = drawerState,
@@ -209,6 +216,7 @@ fun ChatPage(id: Uuid, text: String?, files: List<Uri>, nodeId: Uuid? = null) {
                     inputState = inputState,
                     loadingJob = loadingJob,
                     processingStatus = processingStatus,
+                    summaryProgress = summaryProgress,
                     setting = setting,
                     conversation = conversation,
                     drawerState = drawerState,
@@ -235,6 +243,7 @@ private fun ChatPageContent(
     inputState: ChatInputState,
     loadingJob: Job?,
     processingStatus: String? = null,
+    summaryProgress: ConversationSummaryProgress,
     setting: Settings,
     bigScreen: Boolean,
     conversation: Conversation,
@@ -258,12 +267,22 @@ private fun ChatPageContent(
         settings = setting,
         previewMode = previewMode,
         dismissedConversationId = dismissedSummaryBackfillConversationId,
+        summaryProgress = summaryProgress,
     )
-    val summaryModelMissingMessage = stringResource(R.string.chat_overview_summary_backfill_model_missing)
+    val summaryFailedMessage = stringResource(R.string.chat_overview_summary_failed)
+    var lastSummaryErrorMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(previewMode) {
-        if (!previewMode) {
-            dismissedSummaryBackfillConversationId = null
+    LaunchedEffect(summaryProgress.errorMessage) {
+        val errorMessage = summaryProgress.errorMessage ?: return@LaunchedEffect
+        if (lastSummaryErrorMessage != errorMessage) {
+            toaster.show("$summaryFailedMessage: $errorMessage", type = ToastType.Error)
+            lastSummaryErrorMessage = errorMessage
+        }
+    }
+
+    LaunchedEffect(summaryProgress.running) {
+        if (summaryProgress.running) {
+            lastSummaryErrorMessage = null
         }
     }
 
@@ -282,6 +301,7 @@ private fun ChatPageContent(
                     bigScreen = bigScreen,
                     drawerState = drawerState,
                     previewMode = previewMode,
+                    summaryProgress = summaryProgress,
                     onNewChat = {
                         navigateToChatPage(navController)
                     },
@@ -294,79 +314,81 @@ private fun ChatPageContent(
                 )
             },
             bottomBar = {
-                ChatInput(
-                    state = inputState,
-                    loading = loadingJob != null,
-                    settings = setting,
-                    conversation = conversation,
-                    mcpManager = vm.mcpManager,
-                    hazeState = hazeState,
-                    onCancelClick = {
-                        vm.stopGeneration()
-                    },
-                    enableSearch = enableWebSearch,
-                    onToggleSearch = {
-                        vm.updateSettings(setting.copy(enableWebSearch = !enableWebSearch))
-                    },
-                    onSendClick = {
-                        if (currentChatModel == null) {
-                            toaster.show("请先选择模型", type = ToastType.Error)
-                            return@ChatInput
-                        }
-                        if (inputState.isEditing()) {
-                            vm.handleMessageEdit(
-                                parts = inputState.getContents(),
-                                messageId = inputState.editingMessage!!,
-                            )
-                        } else {
-                            vm.handleMessageSend(inputState.getContents())
-                            scope.launch {
-                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                if (!previewMode) {
+                    ChatInput(
+                        state = inputState,
+                        loading = loadingJob != null,
+                        settings = setting,
+                        conversation = conversation,
+                        mcpManager = vm.mcpManager,
+                        hazeState = hazeState,
+                        onCancelClick = {
+                            vm.stopGeneration()
+                        },
+                        enableSearch = enableWebSearch,
+                        onToggleSearch = {
+                            vm.updateSettings(setting.copy(enableWebSearch = !enableWebSearch))
+                        },
+                        onSendClick = {
+                            if (currentChatModel == null) {
+                                toaster.show("请先选择模型", type = ToastType.Error)
+                                return@ChatInput
                             }
-                        }
-                        inputState.clearInput()
-                    },
-                    onLongSendClick = {
-                        if (inputState.isEditing()) {
-                            vm.handleMessageEdit(
-                                parts = inputState.getContents(),
-                                messageId = inputState.editingMessage!!,
-                            )
-                        } else {
-                            vm.handleMessageSend(content = inputState.getContents(), answer = false)
-                            scope.launch {
-                                chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
-                            }
-                        }
-                        inputState.clearInput()
-                    },
-                    onUpdateChatModel = {
-                        vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
-                    },
-                    onUpdateAssistant = {
-                        vm.updateSettings(
-                            setting.copy(
-                                assistants = setting.assistants.map { assistant ->
-                                    if (assistant.id == it.id) {
-                                        it
-                                    } else {
-                                        assistant
-                                    }
+                            if (inputState.isEditing()) {
+                                vm.handleMessageEdit(
+                                    parts = inputState.getContents(),
+                                    messageId = inputState.editingMessage!!,
+                                )
+                            } else {
+                                vm.handleMessageSend(inputState.getContents())
+                                scope.launch {
+                                    chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
                                 }
+                            }
+                            inputState.clearInput()
+                        },
+                        onLongSendClick = {
+                            if (inputState.isEditing()) {
+                                vm.handleMessageEdit(
+                                    parts = inputState.getContents(),
+                                    messageId = inputState.editingMessage!!,
+                                )
+                            } else {
+                                vm.handleMessageSend(content = inputState.getContents(), answer = false)
+                                scope.launch {
+                                    chatListState.requestScrollToItem(conversation.currentMessages.size + 5)
+                                }
+                            }
+                            inputState.clearInput()
+                        },
+                        onUpdateChatModel = {
+                            vm.setChatModel(assistant = setting.getCurrentAssistant(), model = it)
+                        },
+                        onUpdateAssistant = {
+                            vm.updateSettings(
+                                setting.copy(
+                                    assistants = setting.assistants.map { assistant ->
+                                        if (assistant.id == it.id) {
+                                            it
+                                        } else {
+                                            assistant
+                                        }
+                                    }
+                                )
                             )
-                        )
-                    },
-                    onUpdateSearchService = { index ->
-                        vm.updateSettings(
-                            setting.copy(
-                                searchServiceSelected = index
+                        },
+                        onUpdateSearchService = { index ->
+                            vm.updateSettings(
+                                setting.copy(
+                                    searchServiceSelected = index
+                                )
                             )
-                        )
-                    },
-                    onCompressContext = { additionalPrompt, targetTokens, keepRecentMessages ->
-                        vm.handleCompressContext(additionalPrompt, targetTokens, keepRecentMessages)
-                    },
-                )
+                        },
+                        onCompressContext = { additionalPrompt, targetTokens, keepRecentMessages ->
+                            vm.handleCompressContext(additionalPrompt, targetTokens, keepRecentMessages)
+                        },
+                    )
+                }
             },
             containerColor = Color.Transparent,
         ) { innerPadding ->
@@ -455,11 +477,7 @@ private fun ChatPageContent(
         dismissText = stringResource(R.string.chat_overview_summary_backfill_dismiss),
         onConfirm = {
             dismissedSummaryBackfillConversationId = conversation.id
-            if (setting.findModelById(setting.conversationSummaryModelId) == null) {
-                toaster.show(summaryModelMissingMessage, type = ToastType.Warning)
-            } else {
-                vm.generateMissingMessageSummaries()
-            }
+            vm.generateMissingMessageSummaries()
         },
         onDismiss = {
             dismissedSummaryBackfillConversationId = conversation.id
@@ -481,6 +499,7 @@ private fun TopBar(
     drawerState: DrawerState,
     bigScreen: Boolean,
     previewMode: Boolean,
+    summaryProgress: ConversationSummaryProgress,
     onClickMenu: () -> Unit,
     onNewChat: () -> Unit,
     onUpdateTitle: (String) -> Unit
@@ -541,6 +560,10 @@ private fun TopBar(
             }
         },
         actions = {
+            if (previewMode) {
+                SummaryProgressChip(summaryProgress)
+            }
+
             IconButton(
                 onClick = {
                     onClickMenu()
@@ -593,5 +616,68 @@ private fun TopBar(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun SummaryProgressChip(summaryProgress: ConversationSummaryProgress) {
+    if (!summaryProgress.running && !summaryProgress.failed && summaryProgress.total <= 0) {
+        return
+    }
+
+    val color = if (summaryProgress.failed) {
+        MaterialTheme.colorScheme.error
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    val label = when {
+        summaryProgress.failed -> stringResource(R.string.chat_overview_summary_failed)
+        summaryProgress.running && summaryProgress.total > 0 -> stringResource(
+            R.string.chat_overview_summary_progress,
+            summaryProgress.completed.coerceAtMost(summaryProgress.total),
+            summaryProgress.total,
+        )
+        summaryProgress.running -> stringResource(R.string.chat_overview_summary_progress_indeterminate)
+        else -> stringResource(R.string.chat_overview_summary_done)
+    }
+
+    Surface(
+        color = color.copy(alpha = 0.12f),
+        contentColor = color,
+        shape = MaterialTheme.shapes.small,
+        modifier = Modifier.padding(end = 4.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .width(92.dp)
+                .padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                text = label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.labelSmall,
+            )
+            val progressFraction = summaryProgress.progressFraction
+            if (summaryProgress.running && progressFraction == null) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = color,
+                    trackColor = color.copy(alpha = 0.18f),
+                )
+            } else {
+                LinearProgressIndicator(
+                    progress = { progressFraction ?: 1f },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp),
+                    color = color,
+                    trackColor = color.copy(alpha = 0.18f),
+                )
+            }
+        }
     }
 }

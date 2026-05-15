@@ -1040,4 +1040,20 @@ mDNSアドレス: .localホスト名を使用し、IPを知らなくても同じ
   <string name="chat_overview_summary_backfill_confirm">要約を生成</string>
   <string name="chat_overview_summary_backfill_dismiss">今はしない</string>
   <string name="chat_overview_summary_backfill_model_missing">先にチャット概要要約モデルを設定してください</string>
+  <string name="backup_page_cloud_sync">クラウド同期</string>
+  <string name="backup_page_cloud_sync_dirty_objects">未同期オブジェクト: %1$d</string>
+  <string name="backup_page_cloud_sync_last_pull">前回取得: %1$s</string>
+  <string name="backup_page_cloud_sync_last_push">前回アップロード: %1$s</string>
+  <string name="backup_page_cloud_sync_sync_path">同期パス</string>
+  <string name="backup_page_cloud_sync_testing">テスト中...</string>
+  <string name="backup_page_cloud_sync_sync_now">今すぐ同期</string>
+  <string name="backup_page_cloud_sync_syncing">同期中</string>
+  <string name="backup_page_cloud_sync_finished">同期完了</string>
+  <string name="backup_page_cloud_sync_failed">同期失敗: %1$s</string>
+  <string name="backup_page_cloud_sync_never">なし</string>
+  <string name="backup_page_cloud_sync_status_idle">待機中</string>
+  <string name="backup_page_cloud_sync_status_syncing">同期中</string>
+  <string name="backup_page_cloud_sync_status_synced">同期済み</string>
+  <string name="backup_page_cloud_sync_status_waiting_for_network">ネットワーク待機中</string>
+  <string name="backup_page_cloud_sync_status_error">エラー</string>
 </resources>

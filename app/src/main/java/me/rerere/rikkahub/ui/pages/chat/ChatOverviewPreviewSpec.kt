@@ -6,6 +6,7 @@ import me.rerere.rikkahub.data.ai.summary.pendingSummaryCandidates
 import me.rerere.rikkahub.data.datastore.ChatOverviewDisplayMode
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Conversation
+import me.rerere.rikkahub.service.ConversationSummaryProgress
 import kotlin.uuid.Uuid
 
 internal data class ChatOverviewPreviewSpec(
@@ -25,6 +26,7 @@ internal fun buildChatOverviewSummaryBackfillPromptSpec(
     settings: Settings,
     previewMode: Boolean,
     dismissedConversationId: Uuid?,
+    summaryProgress: ConversationSummaryProgress,
 ): ChatOverviewSummaryBackfillPromptSpec {
     val missingCount = if (settings.displaySetting.chatOverviewDisplayMode == ChatOverviewDisplayMode.AI_SUMMARY) {
         conversation.pendingSummaryCandidates().size
@@ -35,7 +37,9 @@ internal fun buildChatOverviewSummaryBackfillPromptSpec(
     return ChatOverviewSummaryBackfillPromptSpec(
         shouldPrompt = previewMode &&
             missingCount > 0 &&
-            dismissedConversationId != conversation.id,
+            dismissedConversationId != conversation.id &&
+            !summaryProgress.running &&
+            !summaryProgress.failed,
         missingCount = missingCount,
     )
 }

@@ -325,6 +325,7 @@
   <string name="error_title_compress_conversation">Conversation compression failed</string>
   <string name="error_title_generate_title">Auto title generation failed</string>
   <string name="error_title_generation">Message generation failed</string>
+  <string name="error_title_message_summary">Message summary failed</string>
   <string name="error_title_operation">Operation failed</string>
   <string name="error_title_regenerate_message">Message regeneration failed</string>
   <string name="error_title_send_message">Message send failed</string>
@@ -1040,4 +1041,27 @@
   <string name="chat_overview_summary_backfill_confirm">Generate summaries</string>
   <string name="chat_overview_summary_backfill_dismiss">Not now</string>
   <string name="chat_overview_summary_backfill_model_missing">Please configure the chat overview summary model first</string>
+  <string name="chat_overview_summary_provider_missing">The chat overview summary model provider is unavailable</string>
+  <string name="chat_overview_summary_blank_result">The summary model returned an empty result</string>
+  <string name="chat_overview_summary_progress">Summarizing %1$d/%2$d</string>
+  <string name="chat_overview_summary_progress_indeterminate">Summarizing</string>
+  <string name="chat_overview_summary_failed">Summary failed</string>
+  <string name="chat_overview_summary_done">Summary done</string>
+  <string name="backup_page_cloud_sync">Cloud Sync</string>
+  <string name="backup_page_cloud_sync_dirty_objects">Dirty objects: %1$d</string>
+  <string name="backup_page_cloud_sync_last_pull">Last pull: %1$s</string>
+  <string name="backup_page_cloud_sync_last_push">Last push: %1$s</string>
+  <string name="backup_page_cloud_sync_last_result">Last result: remote %1$d, pulled chats %2$d, pulled settings %3$d, pushed objects %4$d</string>
+  <string name="backup_page_cloud_sync_sync_path">Sync path</string>
+  <string name="backup_page_cloud_sync_testing">Testing...</string>
+  <string name="backup_page_cloud_sync_sync_now">Sync now</string>
+  <string name="backup_page_cloud_sync_syncing">Syncing</string>
+  <string name="backup_page_cloud_sync_finished">Sync finished</string>
+  <string name="backup_page_cloud_sync_failed">Sync failed: %1$s</string>
+  <string name="backup_page_cloud_sync_never">Never</string>
+  <string name="backup_page_cloud_sync_status_idle">Idle</string>
+  <string name="backup_page_cloud_sync_status_syncing">Syncing</string>
+  <string name="backup_page_cloud_sync_status_synced">Synced</string>
+  <string name="backup_page_cloud_sync_status_waiting_for_network">Waiting for network</string>
+  <string name="backup_page_cloud_sync_status_error">Error</string>
 </resources>

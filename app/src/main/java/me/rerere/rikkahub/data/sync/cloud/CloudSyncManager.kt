@@ -133,7 +133,8 @@ class CloudSyncManager(
                 var currentState = bootstrapDirtyObjects.fold(state) { acc, objectKey ->
                     acc.markDirty(objectKey)
                 }
-                currentState = pullRemoteObjects(config, manifest, currentState)
+                val pullResult = pullRemoteObjects(config, manifest, currentState, reason)
+                currentState = pullResult.state
                 val pushResult = pushDirtyObjects(config, manifest, currentState)
                 manifest = pushResult.manifest
                 currentState = pushResult.state
@@ -141,13 +142,39 @@ class CloudSyncManager(
                 val manifestBytes = json.encodeToString(manifest).encodeToByteArray()
                 objectStore.write(config, MANIFEST_PATH, manifestBytes, JSON_CONTENT_TYPE)
                 val finishedAt = nowMillis()
+                val settingsAfterPull = settingsStore.settingsFlow.value
+                val selectedAssistantHasConversations = conversationRepository.countConversationsOfAssistant(
+                    settingsAfterPull.assistantId
+                ) > 0
+                val visibleConversationAssistantIds = if (reason == SyncReason.Manual) {
+                    conversationRepository.getAssistantIdsWithConversations()
+                } else {
+                    pullResult.pulledConversationAssistantIds.toList()
+                }
                 val nextState = currentState.copy(
                     lastPullAt = finishedAt,
                     lastPushAt = if (pushResult.pushed) finishedAt else currentState.lastPushAt,
                     lastManifestHash = sha256Hash(manifestBytes),
+                    lastRemoteObjectCount = manifest.objects.size,
+                    lastPulledConversationCount = pullResult.pulledConversationCount,
+                    lastPulledSettingsCount = pullResult.pulledSettingsCount,
+                    lastPushedObjectCount = pushResult.pushedObjectCount,
                     lastError = null,
                 )
-                settingsStore.update { it.copy(cloudSyncState = nextState) }
+                val remoteAssistantSettingsPresent = settingsObjectKey(SettingsSyncKind.Assistants) in manifest.objects
+                suppressSettingsDirty = true
+                try {
+                    settingsStore.update {
+                        it.copy(cloudSyncState = nextState)
+                            .withConversationAssistantsVisible(
+                                conversationAssistantIds = visibleConversationAssistantIds,
+                                selectedAssistantHasConversations = selectedAssistantHasConversations,
+                                allowPlaceholderAssistants = !remoteAssistantSettingsPresent,
+                            )
+                    }
+                } finally {
+                    suppressSettingsDirty = false
+                }
                 _status.value = CloudSyncStatus.Synced
             }.onFailure { error ->
                 settingsStore.update {
@@ -163,22 +190,39 @@ class CloudSyncManager(
         config: CloudSyncConfig,
         manifest: SyncManifest,
         state: CloudSyncState,
-    ): CloudSyncState {
+        reason: SyncReason,
+    ): PullResult {
         var currentState = state
+        val pulledConversationAssistantIds = mutableSetOf<Uuid>()
+        var pulledConversationCount = 0
+        var pulledSettingsCount = 0
         manifest.objects.forEach { (key, entry) ->
-            if (!entry.shouldPull(currentState, key)) return@forEach
-
             when {
                 key.startsWith("conversation:") -> {
-                    currentState = pullConversation(config, key, entry, currentState)
+                    if (!entry.shouldPullObject(currentState, key)) return@forEach
+                    val result = pullConversation(config, key, entry, currentState)
+                    currentState = result.state
+                    result.assistantId?.let { pulledConversationAssistantIds.add(it) }
+                    if (result.pulledConversation) {
+                        pulledConversationCount++
+                    }
                 }
 
-                key.startsWith("settings:") && key !in currentState.dirtyObjects && !entry.deleted -> {
-                    currentState = pullSettings(config, key, entry, currentState)
+                key.startsWith("settings:") && entry.shouldPullSettingsObject(currentState, key, reason) -> {
+                    val result = pullSettings(config, key, entry, currentState)
+                    currentState = result.state
+                    if (result.pulledSettings) {
+                        pulledSettingsCount++
+                    }
                 }
             }
         }
-        return currentState
+        return PullResult(
+            state = currentState,
+            pulledConversationAssistantIds = pulledConversationAssistantIds,
+            pulledConversationCount = pulledConversationCount,
+            pulledSettingsCount = pulledSettingsCount,
+        )
     }
 
     private suspend fun pullConversation(
@@ -186,14 +230,18 @@ class CloudSyncManager(
         key: String,
         entry: SyncManifestEntry,
         state: CloudSyncState,
-    ): CloudSyncState {
+    ): PullConversationResult {
         val conversationId = Uuid.parse(key.removePrefix("conversation:"))
         if (entry.deleted) {
             conversationRepository.deleteConversationFromSync(conversationId)
-            return state.updateObjectState(key, entry).clearDirty(setOf(key))
+            return PullConversationResult(
+                state = state.updateObjectState(key, entry).clearDirty(setOf(key)),
+                assistantId = null,
+                pulledConversation = false,
+            )
         }
 
-        val bytes = objectStore.read(config, entry.path) ?: return state
+        val bytes = objectStore.read(config, entry.path) ?: return PullConversationResult(state, null, false)
         val envelope = json.decodeFromString<ConversationEnvelope>(bytes.decodeToString())
         val replacements = downloadReferencedFiles(config, envelope.files)
         val incoming = envelope.conversation.rewriteFileUris(replacements)
@@ -202,7 +250,11 @@ class CloudSyncManager(
         conversationRepository.upsertConversationFromSync(merged)
 
         val updated = state.updateObjectState(key, entry)
-        return if (key in state.dirtyObjects) updated.markDirty(key) else updated.clearDirty(setOf(key))
+        return PullConversationResult(
+            state = if (key in state.dirtyObjects) updated.markDirty(key) else updated.clearDirty(setOf(key)),
+            assistantId = merged.assistantId,
+            pulledConversation = true,
+        )
     }
 
     private suspend fun pullSettings(
@@ -210,8 +262,8 @@ class CloudSyncManager(
         key: String,
         entry: SyncManifestEntry,
         state: CloudSyncState,
-    ): CloudSyncState {
-        val bytes = objectStore.read(config, entry.path) ?: return state
+    ): PullSettingsResult {
+        val bytes = objectStore.read(config, entry.path) ?: return PullSettingsResult(state, false)
         val envelope = json.decodeFromString<SettingsSyncEnvelope>(bytes.decodeToString())
         suppressSettingsDirty = true
         try {
@@ -221,7 +273,10 @@ class CloudSyncManager(
         } finally {
             suppressSettingsDirty = false
         }
-        return state.updateObjectState(key, entry).clearDirty(setOf(key))
+        return PullSettingsResult(
+            state = state.updateObjectState(key, entry).clearDirty(setOf(key)),
+            pulledSettings = true,
+        )
     }
 
     private suspend fun pushDirtyObjects(
@@ -257,6 +312,7 @@ class CloudSyncManager(
             manifest = currentManifest.copy(updatedAt = nowMillis()),
             state = currentState,
             pushed = pushedKeys.isNotEmpty(),
+            pushedObjectCount = pushedKeys.size,
         )
     }
 
@@ -289,6 +345,7 @@ class CloudSyncManager(
                 manifest = manifest.withObject(key, entry),
                 state = state.updateObjectState(key, entry),
                 pushed = true,
+                pushedObjectCount = 1,
             )
         }
 
@@ -315,6 +372,7 @@ class CloudSyncManager(
             manifest = filesResult.manifest.withObject(key, entry),
             state = state.updateObjectState(key, entry),
             pushed = true,
+            pushedObjectCount = 1,
         )
     }
 
@@ -343,6 +401,7 @@ class CloudSyncManager(
             manifest = manifest.withObject(key, entry),
             state = state.updateObjectState(key, entry),
             pushed = true,
+            pushedObjectCount = 1,
         )
     }
 
@@ -357,6 +416,7 @@ class CloudSyncManager(
             manifest = manifest,
             state = state,
             pushed = false,
+            pushedObjectCount = 0,
         )
         val previous = state.objectStates[key]
         val version = (previous?.version ?: manifest.objects[key]?.version ?: 0L) + 1L
@@ -381,6 +441,7 @@ class CloudSyncManager(
             manifest = manifest.withObject(key, entry),
             state = state.updateObjectState(key, entry),
             pushed = true,
+            pushedObjectCount = 1,
         )
     }
 
@@ -469,14 +530,6 @@ class CloudSyncManager(
         )
     }
 
-    private fun SyncManifestEntry.shouldPull(
-        state: CloudSyncState,
-        key: String,
-    ): Boolean {
-        val local = state.objectStates[key] ?: return true
-        return version > local.version || (version == local.version && hash != local.hash)
-    }
-
     private fun Conversation.rewriteFileUris(replacements: Map<String, String>): Conversation {
         if (replacements.isEmpty()) return this
         return copy(
@@ -530,6 +583,25 @@ class CloudSyncManager(
         val manifest: SyncManifest,
         val state: CloudSyncState,
         val pushed: Boolean,
+        val pushedObjectCount: Int,
+    )
+
+    private data class PullResult(
+        val state: CloudSyncState,
+        val pulledConversationAssistantIds: Set<Uuid>,
+        val pulledConversationCount: Int,
+        val pulledSettingsCount: Int,
+    )
+
+    private data class PullConversationResult(
+        val state: CloudSyncState,
+        val assistantId: Uuid?,
+        val pulledConversation: Boolean,
+    )
+
+    private data class PullSettingsResult(
+        val state: CloudSyncState,
+        val pulledSettings: Boolean,
     )
 
     private data class FileUploadResult(

@@ -3,9 +3,13 @@ package me.rerere.rikkahub.ui.pages.backup
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.datastore.SettingsStore
@@ -38,11 +42,15 @@ class BackupVM(
 
     val webDavBackupItems = MutableStateFlow<UiState<List<WebDavBackupItem>>>(UiState.Idle)
     val s3BackupItems = MutableStateFlow<UiState<List<S3BackupItem>>>(UiState.Idle)
+    val cloudSyncEvents: SharedFlow<CloudSyncUiEvent> get() = _cloudSyncEvents.asSharedFlow()
+    val isTestingCloudSync = MutableStateFlow(false)
+    val isManualCloudSyncing = MutableStateFlow(false)
     val cloudSyncStatus = cloudSyncManager.status.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
         initialValue = cloudSyncManager.status.value,
     )
+    private val _cloudSyncEvents = MutableSharedFlow<CloudSyncUiEvent>()
 
     init {
         loadBackupFileItems()
@@ -82,6 +90,40 @@ class BackupVM(
 
     suspend fun syncNow() {
         cloudSyncManager.syncNow(SyncReason.Manual)
+    }
+
+    fun testCloudSyncAsync() {
+        if (isTestingCloudSync.value || isManualCloudSyncing.value) return
+        viewModelScope.launch {
+            isTestingCloudSync.value = true
+            try {
+                testCloudSync()
+                _cloudSyncEvents.emit(CloudSyncUiEvent.ConnectionSuccess)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _cloudSyncEvents.emit(CloudSyncUiEvent.ConnectionFailed(error.message.orEmpty()))
+            } finally {
+                isTestingCloudSync.value = false
+            }
+        }
+    }
+
+    fun syncNowAsync() {
+        if (isManualCloudSyncing.value) return
+        viewModelScope.launch {
+            isManualCloudSyncing.value = true
+            try {
+                syncNow()
+                _cloudSyncEvents.emit(CloudSyncUiEvent.SyncFinished)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                _cloudSyncEvents.emit(CloudSyncUiEvent.SyncFailed(error.message.orEmpty()))
+            } finally {
+                isManualCloudSyncing.value = false
+            }
+        }
     }
 
     suspend fun backup() {
@@ -226,3 +268,10 @@ data class ChatboxRestoreResult(
     val skippedImageParts: Int,
     val skippedEmptyMessages: Int,
 )
+
+sealed interface CloudSyncUiEvent {
+    data object ConnectionSuccess : CloudSyncUiEvent
+    data class ConnectionFailed(val message: String) : CloudSyncUiEvent
+    data object SyncFinished : CloudSyncUiEvent
+    data class SyncFailed(val message: String) : CloudSyncUiEvent
+}

@@ -23,28 +23,31 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dokar.sonner.ToastType
-import kotlinx.coroutines.launch
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.Upload02
 import me.rerere.hugeicons.stroke.View
 import me.rerere.hugeicons.stroke.ViewOff
+import me.rerere.rikkahub.R
 import me.rerere.rikkahub.data.sync.cloud.CloudSyncConfig
 import me.rerere.rikkahub.data.sync.cloud.CloudSyncStatus
 import me.rerere.rikkahub.ui.components.ui.CardGroup
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.pages.backup.BackupVM
+import me.rerere.rikkahub.ui.pages.backup.CloudSyncUiEvent
 import me.rerere.rikkahub.utils.toLocalDateTime
 import java.time.Instant
 
@@ -52,12 +55,46 @@ import java.time.Instant
 fun CloudSyncTab(vm: BackupVM) {
     val settings by vm.settings.collectAsStateWithLifecycle()
     val status by vm.cloudSyncStatus.collectAsStateWithLifecycle()
+    val isTesting by vm.isTestingCloudSync.collectAsStateWithLifecycle()
+    val isSyncing by vm.isManualCloudSyncing.collectAsStateWithLifecycle()
     val config = settings.cloudSyncConfig
     val state = settings.cloudSyncState
-    val scope = rememberCoroutineScope()
     val toaster = LocalToaster.current
-    var isTesting by remember { mutableStateOf(false) }
-    var isSyncing by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+
+    LaunchedEffect(vm) {
+        vm.cloudSyncEvents.collect { event ->
+            when (event) {
+                CloudSyncUiEvent.ConnectionSuccess -> {
+                    toaster.show(
+                        message = context.getString(R.string.backup_page_connection_success),
+                        type = ToastType.Success,
+                    )
+                }
+
+                is CloudSyncUiEvent.ConnectionFailed -> {
+                    toaster.show(
+                        message = context.getString(R.string.backup_page_connection_failed, event.message),
+                        type = ToastType.Error,
+                    )
+                }
+
+                CloudSyncUiEvent.SyncFinished -> {
+                    toaster.show(
+                        message = context.getString(R.string.backup_page_cloud_sync_finished),
+                        type = ToastType.Success,
+                    )
+                }
+
+                is CloudSyncUiEvent.SyncFailed -> {
+                    toaster.show(
+                        message = context.getString(R.string.backup_page_cloud_sync_failed, event.message),
+                        type = ToastType.Error,
+                    )
+                }
+            }
+        }
+    }
 
     fun updateConfig(newConfig: CloudSyncConfig) {
         vm.updateSettings(settings.copy(cloudSyncConfig = newConfig))
@@ -85,7 +122,7 @@ fun CloudSyncTab(vm: BackupVM) {
                     },
                     headlineContent = {
                         Text(
-                            text = "Cloud Sync",
+                            text = stringResource(R.string.backup_page_cloud_sync),
                             style = MaterialTheme.typography.titleMedium,
                         )
                     },
@@ -97,17 +134,37 @@ fun CloudSyncTab(vm: BackupVM) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                text = "Dirty objects: ${state.dirtyObjects.size}",
+                                text = stringResource(
+                                    R.string.backup_page_cloud_sync_dirty_objects,
+                                    state.dirtyObjects.size,
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                text = "Last pull: ${state.lastPullAt.syncTimeText()}",
+                                text = stringResource(
+                                    R.string.backup_page_cloud_sync_last_pull,
+                                    state.lastPullAt.syncTimeText(),
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                text = "Last push: ${state.lastPushAt.syncTimeText()}",
+                                text = stringResource(
+                                    R.string.backup_page_cloud_sync_last_push,
+                                    state.lastPushAt.syncTimeText(),
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.backup_page_cloud_sync_last_result,
+                                    state.lastRemoteObjectCount,
+                                    state.lastPulledConversationCount,
+                                    state.lastPulledSettingsCount,
+                                    state.lastPushedObjectCount,
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -125,7 +182,7 @@ fun CloudSyncTab(vm: BackupVM) {
 
             CardGroup {
                 item(
-                    headlineContent = { Text("WebDAV server") },
+                    headlineContent = { Text(stringResource(R.string.backup_page_webdav_server_address)) },
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
@@ -137,7 +194,7 @@ fun CloudSyncTab(vm: BackupVM) {
                     },
                 )
                 item(
-                    headlineContent = { Text("Username") },
+                    headlineContent = { Text(stringResource(R.string.backup_page_username)) },
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
@@ -148,7 +205,7 @@ fun CloudSyncTab(vm: BackupVM) {
                     },
                 )
                 item(
-                    headlineContent = { Text("Password") },
+                    headlineContent = { Text(stringResource(R.string.backup_page_password)) },
                     supportingContent = {
                         var passwordVisible by remember { mutableStateOf(false) }
                         OutlinedTextField(
@@ -173,7 +230,7 @@ fun CloudSyncTab(vm: BackupVM) {
                     },
                 )
                 item(
-                    headlineContent = { Text("Sync path") },
+                    headlineContent = { Text(stringResource(R.string.backup_page_cloud_sync_sync_path)) },
                     supportingContent = {
                         OutlinedTextField(
                             modifier = Modifier.fillMaxWidth(),
@@ -195,35 +252,19 @@ fun CloudSyncTab(vm: BackupVM) {
         ) {
             OutlinedButton(
                 enabled = !isTesting && !isSyncing,
-                onClick = {
-                    scope.launch {
-                        isTesting = true
-                        runCatching {
-                            vm.testCloudSync()
-                            toaster.show("Connection successful", type = ToastType.Success)
-                        }.onFailure {
-                            toaster.show("Connection failed: ${it.message ?: ""}", type = ToastType.Error)
-                        }
-                        isTesting = false
-                    }
-                },
+                onClick = vm::testCloudSyncAsync,
             ) {
-                Text(if (isTesting) "Testing..." else "Test")
+                Text(
+                    if (isTesting) {
+                        stringResource(R.string.backup_page_cloud_sync_testing)
+                    } else {
+                        stringResource(R.string.backup_page_test_connection)
+                    }
+                )
             }
             Button(
                 enabled = config.enabled && !isSyncing && status != CloudSyncStatus.Syncing,
-                onClick = {
-                    scope.launch {
-                        isSyncing = true
-                        runCatching {
-                            vm.syncNow()
-                            toaster.show("Sync finished", type = ToastType.Success)
-                        }.onFailure {
-                            toaster.show("Sync failed: ${it.message ?: ""}", type = ToastType.Error)
-                        }
-                        isSyncing = false
-                    }
-                },
+                onClick = vm::syncNowAsync,
             ) {
                 if (isSyncing || status == CloudSyncStatus.Syncing) {
                     CircularWavyProgressIndicator(modifier = Modifier.size(18.dp))
@@ -231,25 +272,33 @@ fun CloudSyncTab(vm: BackupVM) {
                     Icon(HugeIcons.Upload02, contentDescription = null, modifier = Modifier.size(18.dp))
                 }
                 Spacer(Modifier.width(8.dp))
-                Text(if (isSyncing || status == CloudSyncStatus.Syncing) "Syncing" else "Sync now")
+                Text(
+                    if (isSyncing || status == CloudSyncStatus.Syncing) {
+                        stringResource(R.string.backup_page_cloud_sync_syncing)
+                    } else {
+                        stringResource(R.string.backup_page_cloud_sync_sync_now)
+                    }
+                )
             }
         }
     }
 }
 
+@Composable
 private fun CloudSyncStatus.label(): String {
     return when (this) {
-        CloudSyncStatus.Idle -> "Idle"
-        CloudSyncStatus.Syncing -> "Syncing"
-        CloudSyncStatus.Synced -> "Synced"
-        CloudSyncStatus.WaitingForNetwork -> "Waiting for network"
-        CloudSyncStatus.Error -> "Error"
+        CloudSyncStatus.Idle -> stringResource(R.string.backup_page_cloud_sync_status_idle)
+        CloudSyncStatus.Syncing -> stringResource(R.string.backup_page_cloud_sync_status_syncing)
+        CloudSyncStatus.Synced -> stringResource(R.string.backup_page_cloud_sync_status_synced)
+        CloudSyncStatus.WaitingForNetwork -> stringResource(R.string.backup_page_cloud_sync_status_waiting_for_network)
+        CloudSyncStatus.Error -> stringResource(R.string.backup_page_cloud_sync_status_error)
     }
 }
 
+@Composable
 private fun Long.syncTimeText(): String {
     return if (this <= 0L) {
-        "Never"
+        stringResource(R.string.backup_page_cloud_sync_never)
     } else {
         Instant.ofEpochMilli(this).toLocalDateTime()
     }

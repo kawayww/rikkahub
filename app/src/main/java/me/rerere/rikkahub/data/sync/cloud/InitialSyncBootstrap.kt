@@ -6,13 +6,20 @@ fun initialSyncDirtyObjects(
     localConversationIds: List<String>,
     settingsKinds: Set<SettingsSyncKind> = SettingsSyncKind.entries.toSet(),
 ): Set<String> {
-    if (remoteManifest.objects.isNotEmpty()) return emptySet()
-    if (state.objectStates.isNotEmpty()) return emptySet()
+    val remoteObjects = remoteManifest.objects
 
-    return localConversationIds.mapTo(mutableSetOf()) { conversationObjectKey(it) }
-        .also { keys ->
-            settingsKinds.forEach { kind ->
-                keys.add(settingsObjectKey(kind))
+    return buildSet {
+        localConversationIds.forEach { conversationId ->
+            val key = conversationObjectKey(conversationId)
+            if (key !in remoteObjects) {
+                add(key)
             }
         }
+        settingsKinds.forEach { kind ->
+            val key = settingsObjectKey(kind)
+            if (key !in remoteObjects) {
+                add(key)
+            }
+        }
+    }
 }

@@ -22,8 +22,7 @@ class WebDavObjectStore(
         path: String,
     ): ByteArray? {
         val client = client(config)
-        if (!client.exists(path)) return null
-        return client.get(path).getOrThrow()
+        return client.get(path).getOrNullIfMissing()
     }
 
     override suspend fun write(
@@ -49,9 +48,7 @@ class WebDavObjectStore(
         path: String,
         target: File,
     ): Boolean {
-        val client = client(config)
-        if (!client.exists(path)) return false
-        client.downloadToFile(path, target).getOrThrow()
+        client(config).downloadToFile(path, target).getOrNullIfMissing() ?: return false
         return true
     }
 
@@ -59,10 +56,7 @@ class WebDavObjectStore(
         config: CloudSyncConfig,
         path: String,
     ) {
-        val client = client(config)
-        if (client.exists(path)) {
-            client.delete(path).getOrThrow()
-        }
+        client(config).delete(path).getOrNullIfMissing()
     }
 
     private fun client(config: CloudSyncConfig): WebDavClient {
@@ -75,5 +69,15 @@ class WebDavObjectStore(
             ),
             httpClient = httpClient,
         )
+    }
+}
+
+internal fun <T> Result<T>.getOrNullIfMissing(): T? {
+    return getOrElse { error ->
+        if (error is WebDavException && error.statusCode == 404) {
+            null
+        } else {
+            throw error
+        }
     }
 }

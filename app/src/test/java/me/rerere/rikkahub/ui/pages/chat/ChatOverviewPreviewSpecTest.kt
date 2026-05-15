@@ -8,6 +8,7 @@ import me.rerere.rikkahub.data.datastore.DisplaySetting
 import me.rerere.rikkahub.data.datastore.Settings
 import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.data.model.MessageNode
+import me.rerere.rikkahub.service.ConversationSummaryProgress
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -91,6 +92,7 @@ class ChatOverviewPreviewSpecTest {
             ),
             previewMode = true,
             dismissedConversationId = null,
+            summaryProgress = ConversationSummaryProgress(),
         )
 
         assertTrue(prompt.shouldPrompt)
@@ -116,22 +118,110 @@ class ChatOverviewPreviewSpecTest {
             ),
             previewMode = true,
             dismissedConversationId = null,
+            summaryProgress = ConversationSummaryProgress(),
         )
         val normalMode = buildChatOverviewSummaryBackfillPromptSpec(
             conversation = conversation,
             settings = Settings(),
             previewMode = false,
             dismissedConversationId = null,
+            summaryProgress = ConversationSummaryProgress(),
         )
         val dismissed = buildChatOverviewSummaryBackfillPromptSpec(
             conversation = conversation,
             settings = Settings(),
             previewMode = true,
             dismissedConversationId = conversation.id,
+            summaryProgress = ConversationSummaryProgress(),
         )
 
         assertFalse(truncatedMode.shouldPrompt)
         assertFalse(normalMode.shouldPrompt)
         assertFalse(dismissed.shouldPrompt)
+    }
+
+    @Test
+    fun `overview summary backfill prompt is skipped while summaries are generating`() {
+        val conversation = Conversation(
+            id = Uuid.random(),
+            assistantId = Uuid.random(),
+            messageNodes = listOf(
+                MessageNode.of(UIMessage.user("hello")),
+                MessageNode.of(UIMessage.assistant("answer")),
+            ),
+        )
+
+        val prompt = buildChatOverviewSummaryBackfillPromptSpec(
+            conversation = conversation,
+            settings = Settings(
+                displaySetting = DisplaySetting(
+                    chatOverviewDisplayMode = ChatOverviewDisplayMode.AI_SUMMARY,
+                )
+            ),
+            previewMode = true,
+            dismissedConversationId = null,
+            summaryProgress = ConversationSummaryProgress(
+                running = true,
+                completed = 1,
+                total = 2,
+            ),
+        )
+
+        assertFalse(prompt.shouldPrompt)
+        assertEquals(2, prompt.missingCount)
+    }
+
+    @Test
+    fun `overview summary backfill prompt is skipped after summary generation failure`() {
+        val conversation = Conversation(
+            id = Uuid.random(),
+            assistantId = Uuid.random(),
+            messageNodes = listOf(
+                MessageNode.of(UIMessage.user("hello")),
+            ),
+        )
+
+        val prompt = buildChatOverviewSummaryBackfillPromptSpec(
+            conversation = conversation,
+            settings = Settings(
+                displaySetting = DisplaySetting(
+                    chatOverviewDisplayMode = ChatOverviewDisplayMode.AI_SUMMARY,
+                )
+            ),
+            previewMode = true,
+            dismissedConversationId = null,
+            summaryProgress = ConversationSummaryProgress(
+                running = false,
+                completed = 0,
+                total = 1,
+                errorMessage = "model failed",
+            ),
+        )
+
+        assertFalse(prompt.shouldPrompt)
+        assertEquals(1, prompt.missingCount)
+    }
+
+    @Test
+    fun `conversation summary progress exposes bounded progress fraction`() {
+        val halfDone = ConversationSummaryProgress(
+            running = true,
+            completed = 2,
+            total = 5,
+        )
+        val overDone = ConversationSummaryProgress(
+            running = false,
+            completed = 7,
+            total = 5,
+        )
+        val empty = ConversationSummaryProgress(
+            running = true,
+            completed = 0,
+            total = 0,
+        )
+
+        assertEquals(0.4f, halfDone.progressFraction!!, 0.0f)
+        assertEquals(1.0f, overDone.progressFraction!!, 0.0f)
+        assertEquals(null, empty.progressFraction)
     }
 }

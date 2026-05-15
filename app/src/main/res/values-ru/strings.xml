@@ -1039,4 +1039,20 @@
   <string name="chat_overview_summary_backfill_confirm">Создать сводки</string>
   <string name="chat_overview_summary_backfill_dismiss">Не сейчас</string>
   <string name="chat_overview_summary_backfill_model_missing">Сначала настройте модель сводок обзора чата</string>
+  <string name="backup_page_cloud_sync">Облачная синхронизация</string>
+  <string name="backup_page_cloud_sync_dirty_objects">Объектов к синхронизации: %1$d</string>
+  <string name="backup_page_cloud_sync_last_pull">Последнее получение: %1$s</string>
+  <string name="backup_page_cloud_sync_last_push">Последняя отправка: %1$s</string>
+  <string name="backup_page_cloud_sync_sync_path">Путь синхронизации</string>
+  <string name="backup_page_cloud_sync_testing">Проверка...</string>
+  <string name="backup_page_cloud_sync_sync_now">Синхронизировать</string>
+  <string name="backup_page_cloud_sync_syncing">Синхронизация</string>
+  <string name="backup_page_cloud_sync_finished">Синхронизация завершена</string>
+  <string name="backup_page_cloud_sync_failed">Ошибка синхронизации: %1$s</string>
+  <string name="backup_page_cloud_sync_never">Никогда</string>
+  <string name="backup_page_cloud_sync_status_idle">Ожидание</string>
+  <string name="backup_page_cloud_sync_status_syncing">Синхронизация</string>
+  <string name="backup_page_cloud_sync_status_synced">Синхронизировано</string>
+  <string name="backup_page_cloud_sync_status_waiting_for_network">Ожидание сети</string>
+  <string name="backup_page_cloud_sync_status_error">Ошибка</string>
 </resources>

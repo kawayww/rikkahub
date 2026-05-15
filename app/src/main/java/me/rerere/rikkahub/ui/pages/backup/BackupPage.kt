@@ -71,7 +71,7 @@ fun BackupPage(vm: BackupVM = koinViewModel()) {
                 Tab(
                     selected = pagerState.currentPage == 0,
                     onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
-                    text = { Text("Cloud Sync") }
+                    text = { Text(stringResource(R.string.backup_page_cloud_sync)) }
                 )
                 Tab(
                     selected = pagerState.currentPage == 1,
